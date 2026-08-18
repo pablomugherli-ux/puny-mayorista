@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { optimizarRuta, type Parada } from "./tsp";
+import { distanciaMetros } from "./geo";
 
 // optimizarRuta arma la "ruta del día" del Vendedor y el orden de paradas de
 // Entrega/Cobrador. Un bug acá no rompe nada visiblemente (la app sigue
@@ -60,7 +61,6 @@ describe("optimizarRuta", () => {
     // igualdad frente al punto de partida de nearest-neighbor, que a su vez
     // suele ganarle al orden arbitrario en instancias como esta).
     function distanciaOrdenOriginal(): number {
-      const { distanciaMetros } = require("./geo");
       let total = 0;
       let anterior = origen;
       for (const p of paradas) {
