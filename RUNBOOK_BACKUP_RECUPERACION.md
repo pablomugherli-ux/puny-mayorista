@@ -1,12 +1,27 @@
 # Runbook de Backup y Recuperación — PUNY 2026 INTEGRAL
 
-**Hallazgo principal de esta revisión (18/08/2026): el proyecto de Supabase
-(`puny-mayorista`, plan Free) NO tiene backups automáticos ni point-in-time
+**Actualización 18/08/2026 — ya hay backup automático corriendo.** Se creó la
+tarea programada `puny-backup-diario` (todos los días 06:09 AM) que exporta
+todas las tablas de la base a un JSON comprimido en `backups/` y de paso
+chequea que el sitio y el proyecto de Supabase estén activos. Ojo: esta tarea
+corre dentro de Cowork, así que solo se dispara si la app está abierta en ese
+momento (si estaba cerrada, corre al abrirla de nuevo) — no es un cron del
+sistema operativo. El primer backup real ya se generó manualmente:
+`backups/puny-mayorista_db_2026-08-18_053200.json.gz` (95 tablas, 320 filas).
+
+Esto es un backup **lógico** (JSON con los datos de cada tabla, vía SQL), no
+un `pg_dump` binario — sirve para reconstruir los datos, pero para restaurar
+hay que reinsertar tabla por tabla respetando el orden de dependencias (ver
+sección 3). Sigue siendo válido complementarlo con el `pg_dump` real de la
+sección 1 si en algún momento pasás a plan Pro o preferís esa vía.
+
+**Hallazgo principal de la revisión original (18/08/2026): el proyecto de Supabase
+(`puny-mayorista`, plan Free) NO tiene backups automáticos nativos ni point-in-time
 recovery. Es cero, no "backups limitados" — el plan Free de Supabase no
-incluye ninguna copia automática.** Esto es más grave que la hipótesis con la
+incluye ninguna copia automática propia.** Esto es más grave que la hipótesis con la
 que arrancamos esta tarea ("hay backups pero nunca se probó el restore") — la
-prioridad inmediata no es "probar la recuperación", es "empezar a tener algo
-que recuperar".
+prioridad inmediata no era "probar la recuperación", era "empezar a tener algo
+que recuperar". Ya resuelto con la tarea programada de arriba.
 
 Fuente: [documentación de backups de Supabase](https://supabase.com/docs/guides/platform/backups) y comparativa de planes 2026 — Pro incluye 7 días de backups diarios automáticos; Free, ninguno. Point-in-time recovery es un add-on aparte (desde USD 100/mes) solo disponible en Pro o superior.
 
@@ -45,7 +60,18 @@ backup, el RPO es "todo lo que haya desde el día 0 del proyecto".
 
 ## 3. Procedimiento de recuperación real (restore)
 
-Si algún día hace falta recuperar de un archivo de `scripts/backup-db.sh`:
+**Si el backup disponible es uno de los `.json.gz` generados por la tarea automática**
+(`backups/puny-mayorista_db_FECHA.json.gz`): es un export lógico tabla por tabla, no un
+dump SQL. Para restaurar una tabla puntual, descomprimir, tomar el array de esa tabla en
+el JSON, y volver a insertarlo vía el SQL Editor de Supabase (`insert into public.TABLA
+select * from jsonb_populate_recordset(null::public.TABLA, '<el array JSON de esa
+tabla>'::jsonb)`) — respetando el orden de dependencias (primero tablas sin foreign keys
+salientes, como `tenants`, `productos`, `clientes`; recién después las que dependen de
+ellas, como `pedidos`, `cobros`, etc.). Es un procedimiento manual y más lento que
+restaurar un `pg_dump`, pero es genuinamente restaurable — hoy es mejor tener esto que
+nada.
+
+Si el backup disponible es un `.sql.gz` de `scripts/backup-db.sh` (el `pg_dump` real):
 
 1. **Nunca restaures directo sobre producción como primer paso.** Creá un
    proyecto nuevo de Supabase (gratis) y restaurá ahí primero, para

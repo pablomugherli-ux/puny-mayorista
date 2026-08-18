@@ -8,6 +8,7 @@
     "start": "next start",
     "test": "vitest run",
     "predeploy": "tsc --noEmit && npm test",
+    "deploy:preview": "npm run predeploy && npm run build && netlify deploy --dir=out --site=88095566-0044-47f8-9483-5d7a9a7cee1a",
     "deploy": "npm run predeploy && npm run build && netlify deploy --prod --dir=out --site=88095566-0044-47f8-9483-5d7a9a7cee1a"
   },
   "dependencies": {

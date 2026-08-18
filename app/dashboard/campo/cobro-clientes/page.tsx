@@ -7,6 +7,7 @@ import ListaBadge from "@/components/ListaBadge";
 import CheckIn from "@/components/CheckIn";
 import { notificarDuenos, notificarCobroWhatsapp } from "@/lib/notify";
 import { exportarExcel, exportarPDF } from "@/lib/reportes";
+import { ejecutarOEncolar, estaOnline, leerConCache } from "@/lib/offlineSync";
 
 const MEDIOS = [
   { value: "efectivo", label: "Efectivo" },
@@ -32,6 +33,8 @@ export default function CobroClientesPropios() {
   const [abierto, setAbierto] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, any>>({});
   const [cobradoHoy, setCobradoHoy] = useState(0);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [errorCobro, setErrorCobro] = useState<string | null>(null);
 
   // RBAC dinámico — Fase 5: profiles.puede_cobrar queda retirada; se lee
   // directo de mis_permisos_activos() (Fase 4), fuente de verdad única.
@@ -40,13 +43,19 @@ export default function CobroClientesPropios() {
   async function idsClientesPropios(): Promise<string[]> {
     if (!profile) return [];
     if (profile.role === "vendedor") {
-      const { data } = await supabase.from("clientes").select("id").eq("vendedor_id", profile.id);
-      return (data || []).map((c) => c.id);
+      const data = await leerConCache(`clientes_propios:${profile.id}`, () =>
+        supabase.from("clientes").select("id").eq("vendedor_id", profile.id)
+      );
+      return (data || []).map((c: any) => c.id);
     }
     // entrega: clientes de sus hojas de ruta + clientes a los que ya entregó
-    const [{ data: paradas }, { data: entregas }] = await Promise.all([
-      supabase.from("hoja_ruta_paradas").select("cliente_id, hojas_ruta!inner(responsable_id)").eq("hojas_ruta.responsable_id", profile.id),
-      supabase.from("entregas").select("pedidos!inner(cliente_id)").eq("repartidor_id", profile.id),
+    const [paradas, entregas] = await Promise.all([
+      leerConCache(`paradas_propias:${profile.id}`, () =>
+        supabase.from("hoja_ruta_paradas").select("cliente_id, hojas_ruta!inner(responsable_id)").eq("hojas_ruta.responsable_id", profile.id)
+      ),
+      leerConCache(`entregas_propias:${profile.id}`, () =>
+        supabase.from("entregas").select("pedidos!inner(cliente_id)").eq("repartidor_id", profile.id)
+      ),
     ]);
     const ids = new Set<string>();
     (paradas || []).forEach((p: any) => p.cliente_id && ids.add(p.cliente_id));
@@ -62,18 +71,22 @@ export default function CobroClientesPropios() {
       setLoading(false);
       return;
     }
-    const { data } = await supabase
-      .from("comprobantes")
-      .select("*, clientes(*)")
-      .in("cliente_id", ids)
-      .gt("saldo_pendiente", 0)
-      .order("fecha_vencimiento");
+    // Se cachea localmente para que esta pantalla se pueda seguir viendo (y
+    // cobrando) sin conexión — mismo criterio que la Hoja de Cobro del rol
+    // "cobrador".
+    const data = await leerConCache(`comprobantes_propios:${profile.id}`, () =>
+      supabase.from("comprobantes").select("*, clientes(*)").in("cliente_id", ids).gt("saldo_pendiente", 0).order("fecha_vencimiento")
+    );
     setComprobantes(data || []);
 
-    const hoy = new Date().toISOString().slice(0, 10);
-    const filtroActor = profile.role === "vendedor" ? { vendedor_id: profile.id } : { repartidor_id: profile.id };
-    const { data: cobros } = await supabase.from("cobros").select("monto").match(filtroActor).gte("fecha", hoy);
-    setCobradoHoy((cobros || []).reduce((s, c) => s + Number(c.monto), 0));
+    // "Cobrado hoy" es solo informativo y requiere una consulta en vivo — si
+    // no hay conexión, se omite sin romper el resto de la pantalla.
+    if (estaOnline()) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const filtroActor = profile.role === "vendedor" ? { vendedor_id: profile.id } : { repartidor_id: profile.id };
+      const { data: cobros } = await supabase.from("cobros").select("monto").match(filtroActor).gte("fecha", hoy);
+      setCobradoHoy((cobros || []).reduce((s, c) => s + Number(c.monto), 0));
+    }
     setLoading(false);
   }
   useEffect(() => { load(); }, [profile]);
@@ -84,37 +97,56 @@ export default function CobroClientesPropios() {
     const monto = Number(f.monto);
     let referencia_pago = f.referencia || null;
     if (f.medio === "qr") referencia_pago = `QR-DEMO-${Date.now()}`;
+    setErrorCobro(null);
 
-    const { data: cobroCreado, error } = await supabase.from("cobros").insert({
-      tenant_id: profile.tenant_id,
-      cliente_id: c.cliente_id,
-      vendedor_id: profile.role === "vendedor" ? profile.id : null,
-      repartidor_id: profile.role === "entrega" ? profile.id : null,
-      lista: c.lista,
-      comprobante_id: c.id,
-      medio_pago: f.medio || "efectivo",
-      monto,
-      referencia_pago,
-    }).select().single();
+    // Igual que en la Hoja de Cobro: id y fecha real los genera el celular,
+    // no la base, para que un reintento offline no duplique el cobro.
+    const cobroId = crypto.randomUUID();
+    const fecha = new Date().toISOString();
 
-    if (error) {
-      alert("No se pudo registrar el cobro: " + error.message.replace(/^.*?: /, ""));
+    const resCobro = await ejecutarOEncolar({
+      tabla: "cobros", tipo: "insert",
+      payload: {
+        id: cobroId,
+        tenant_id: profile.tenant_id,
+        cliente_id: c.cliente_id,
+        vendedor_id: profile.role === "vendedor" ? profile.id : null,
+        repartidor_id: profile.role === "entrega" ? profile.id : null,
+        lista: c.lista,
+        comprobante_id: c.id,
+        medio_pago: f.medio || "efectivo",
+        monto,
+        referencia_pago,
+        fecha,
+      },
+      descripcion: `Cobro a ${c.clientes?.nombre} — $${monto.toFixed(0)}`,
+      tenantId: profile.tenant_id,
+    });
+
+    if (!resCobro.ok) {
+      setErrorCobro((resCobro.error || "").replace(/^.*?: /, ""));
       return;
     }
 
-    const fechaHoy = new Date().toLocaleDateString("es-AR");
-    await supabase.from("notificaciones").insert({
-      tenant_id: profile.tenant_id, cliente_id: c.cliente_id, canal: "whatsapp", tipo: "recibo_cobro",
-      mensaje: `Recibimos tu pago de $${monto.toFixed(0)} correspondiente al comprobante #${c.numero}. ¡Gracias!`,
-      estado: "simulado",
-    });
-    await notificarDuenos(
-      profile.tenant_id!,
-      "aviso_cobro_interno",
-      `Cobro registrado por ${profile.nombre} a ${c.clientes?.nombre} — $${monto.toFixed(0)} (comprobante #${c.numero}) el ${fechaHoy}.`
-    );
-    if (cobroCreado?.id) notificarCobroWhatsapp(cobroCreado.id);
+    // Notificaciones (WhatsApp al cliente, aviso interno a Dueños): son de
+    // cortesía y requieren conexión — si no hay, se omiten sin más.
+    if (estaOnline()) {
+      const fechaHoy = new Date().toLocaleDateString("es-AR");
+      await supabase.from("notificaciones").insert({
+        tenant_id: profile.tenant_id, cliente_id: c.cliente_id, canal: "whatsapp", tipo: "recibo_cobro",
+        mensaje: `Recibimos tu pago de $${monto.toFixed(0)} correspondiente al comprobante #${c.numero}. ¡Gracias!`,
+        estado: "simulado",
+      });
+      await notificarDuenos(
+        profile.tenant_id!,
+        "aviso_cobro_interno",
+        `Cobro registrado por ${profile.nombre} a ${c.clientes?.nombre} — $${monto.toFixed(0)} (comprobante #${c.numero}) el ${fechaHoy}.`
+      );
+      notificarCobroWhatsapp(cobroId);
+    }
 
+    setMensaje(resCobro.encolado ? "Sin conexión: el cobro quedó guardado en el equipo y se sube solo apenas vuelva la señal." : "Cobro registrado correctamente.");
+    setTimeout(() => setMensaje(null), 4000);
     setAbierto(null);
     setForm({});
     load();
@@ -141,6 +173,8 @@ export default function CobroClientesPropios() {
         subtitle={profile?.role === "vendedor" ? "Comprobantes pendientes de tu cartera" : "Comprobantes pendientes de clientes en tus entregas"}
         live
       />
+
+      {mensaje && <p className="text-sm text-green-700 mb-3">{mensaje}</p>}
 
       <div className="card mb-4 flex justify-between items-center flex-wrap gap-3">
         <div>
@@ -189,6 +223,7 @@ export default function CobroClientesPropios() {
                   </div>
                   <input className="input" placeholder="Referencia (N° cheque / operación)" value={form[c.id]?.referencia || ""} onChange={(e) => setForm({ ...form, [c.id]: { ...form[c.id], referencia: e.target.value } })} />
                   <button className="btn-primary" onClick={() => registrarCobro(c)}>Confirmar cobro</button>
+                  {errorCobro && abierto === c.id && <p className="text-sm text-red-600">{errorCobro}</p>}
                 </div>
               )}
             </div>
