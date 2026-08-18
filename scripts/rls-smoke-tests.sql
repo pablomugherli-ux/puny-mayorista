@@ -4,7 +4,7 @@
 -- Regresión mínima para el sistema de permisos dinámicos (tengo_permiso) y
 -- algunas funciones críticas. Correrlo entero (en el SQL editor de Supabase,
 -- o vía el MCP execute_sql) contra el proyecto: si algo falla, tira
--- EXCEPTION con un mensaje claro y CORTA ahí. Si termina sin errores, los 4
+-- EXCEPTION con un mensaje claro y CORTA ahí. Si termina sin errores, los 6
 -- tests pasaron (los RAISE NOTICE de "OK" quedan en el log de Postgres, no
 -- siempre visibles según el cliente SQL que uses — lo que importa es que NO
 -- tire ningún error).
@@ -89,6 +89,54 @@ begin
     raise notice 'TEST 4 OK: _aplicar_plantillas_usuario sigue bloqueada para authenticated';
   end;
 end $$;
+
+reset role;
+
+-- Setup para los tests 5 y 6: un tenant y un cliente "de juguete" ajenos a
+-- todo lo real, creados con el rol elevado con el que corre este script
+-- (antes de simular authenticated). Como todo el script corre dentro de
+-- "begin; ... rollback;", no dejan ningún rastro real.
+insert into tenants (id, nombre, slug) values ('b87a3599-3f0a-4fab-a95c-1db657fdfa09', 'Tenant Test RLS', 'test-rls-tmp');
+insert into clientes (id, tenant_id, nombre) values ('c87a3599-3f0a-4fab-a95c-1db657fdfa10', 'b87a3599-3f0a-4fab-a95c-1db657fdfa09', 'Cliente de otro tenant');
+
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"a0000000-0000-0000-0000-000000000003","role":"authenticated"}';
+
+-- Test 5: aislamiento cross-tenant en SELECT — un vendedor del tenant demo
+-- no debe ver clientes de otro tenant, aunque conozca el id exacto.
+do $$
+declare
+  v_visibles int;
+begin
+  select count(*) into v_visibles from clientes where tenant_id = 'b87a3599-3f0a-4fab-a95c-1db657fdfa09';
+  if v_visibles <> 0 then
+    raise exception 'TEST 5 FALLÓ: un vendedor vio % cliente(s) de otro tenant (debería ver 0)', v_visibles;
+  end if;
+  raise notice 'TEST 5 OK: aislamiento cross-tenant en SELECT sobre clientes';
+end $$;
+
+-- Test 6: aislamiento cross-tenant en INSERT — un vendedor no debe poder
+-- registrar un cobro con tenant_id de otro tenant, ni siquiera contra un
+-- cliente real de ese otro tenant. Esto es plata: si esto se rompe, un
+-- vendedor mal intencionado (o un bug de frontend que mande el tenant_id
+-- equivocado) podría escribir cobros cruzados entre distribuidoras.
+do $$
+declare
+  v_paso boolean := false;
+begin
+  begin
+    insert into cobros (tenant_id, cliente_id, vendedor_id, lista, medio_pago, monto)
+    values ('b87a3599-3f0a-4fab-a95c-1db657fdfa09', 'c87a3599-3f0a-4fab-a95c-1db657fdfa10', 'a0000000-0000-0000-0000-000000000003', 1, 'efectivo', 100);
+    v_paso := true;
+  exception when others then
+    raise notice 'TEST 6 OK: insert de cobro cross-tenant bloqueado (%)', sqlerrm;
+  end;
+  if v_paso then
+    raise exception 'TEST 6 FALLÓ: se pudo insertar un cobro con tenant_id de otra distribuidora';
+  end if;
+end $$;
+
+reset role;
 
 do $$
 begin
