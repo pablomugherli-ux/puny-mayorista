@@ -4,6 +4,7 @@ node_modules/
 # Salidas de build — se regeneran con "npm run build"
 .next/
 out/
+tsconfig.tsbuildinfo
 
 # Local Netlify folder
 .netlify
