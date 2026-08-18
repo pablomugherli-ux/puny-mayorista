@@ -1,0 +1,38 @@
+# CI para PUNY 2026 INTEGRAL.
+#
+# Este workflow queda preparado para cuando el proyecto se suba a un
+# repositorio de GitHub — hoy el proyecto no tiene remoto git configurado
+# (se deployea directo desde la carpeta local vía `npm run deploy`, que ya
+# corre el mismo gate localmente: ver package.json → "predeploy"). En cuanto
+# haya un repo en GitHub, este workflow corre automáticamente en cada push y
+# cada pull request, y evita mergear/deployar código que no compila o que
+# rompe un test.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Chequeo de tipos (tsc)
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Build de producción
+        run: npm run build

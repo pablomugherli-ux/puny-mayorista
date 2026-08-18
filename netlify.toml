@@ -1,0 +1,24 @@
+[build]
+  command = "npm test && npm run build"
+  publish = "out"
+
+# Estos contextos solo se usan si el repo llega a conectarse a un proveedor
+# git (GitHub/GitLab) en Netlify — hoy el deploy es manual por CLI
+# (`npm run deploy`, ver package.json), que ya corre el mismo gate
+# (tsc + tests) antes de buildear. Si en algún momento se conecta el repo,
+# Netlify va a generar automáticamente un "deploy preview" por cada PR y un
+# "branch deploy" por cada rama que no sea la de producción, cada uno con su
+# URL propia — eso funciona como ambiente de staging sin configurar nada más.
+[context.production]
+  command = "npm test && npm run build"
+
+[context.deploy-preview]
+  command = "npm test && npm run build"
+
+[context.branch-deploy]
+  command = "npm test && npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 404

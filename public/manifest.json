@@ -1,0 +1,19 @@
+{
+  "name": "PUNY 2026 INTEGRAL",
+  "short_name": "PUNY",
+  "description": "Backoffice, App de Campo y Portal B2B de PUNY 2026 INTEGRAL — funciona sin conexión y sincroniza al reconectar.",
+  "start_url": "/dashboard",
+  "id": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FBF6EC",
+  "theme_color": "#7A5C0A",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

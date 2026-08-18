@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #FAF5EE;
+  color: #2B2320;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-5;
+}
+
+/* Tarjeta "tech": fondo oscuro degradado con grilla sutil, para paneles destacados */
+.card-tech {
+  @apply relative overflow-hidden rounded-xl p-5 text-white bg-grad-navy shadow-glow;
+}
+.card-tech::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: theme('backgroundImage.grid-tech');
+  background-size: 28px 28px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.card-tech > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Tarjeta de vidrio (glassmorphism), para superponer sobre fondos oscuros */
+.card-glass {
+  @apply relative rounded-xl p-5 backdrop-blur-md bg-white/10 border border-white/15;
+}
+
+/* py-2.5 en mobile (~40px de alto, mínimo táctil razonable) y py-2 desde
+   md+ (desktop, compacidad original) — mismo criterio en .input abajo. */
+.btn-primary {
+  @apply bg-navy text-white px-4 py-2.5 md:py-2 rounded-md text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply bg-white text-navy border border-navy px-4 py-2.5 md:py-2 rounded-md text-sm font-medium hover:bg-gray-50 transition-colors;
+}
+
+.btn-tech {
+  @apply bg-grad-violet text-white px-4 py-2.5 md:py-2 rounded-md text-sm font-semibold shadow-glow hover:opacity-90 transition-opacity disabled:opacity-50;
+}
+
+.input {
+  @apply w-full border border-gray-300 rounded-md px-3 py-2.5 md:py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent;
+}
+
+.badge {
+  @apply inline-block px-2 py-0.5 rounded text-xs font-semibold;
+}
+
+table.tbl {
+  @apply w-full text-sm border-collapse;
+}
+table.tbl th {
+  @apply text-left bg-navy text-white px-3 py-2 sticky top-0;
+}
+table.tbl td {
+  @apply px-3 py-2 border-b border-gray-100;
+}
+table.tbl tr:nth-child(even) {
+  @apply bg-gray-50;
+}
+
+/* Texto con degradado, para títulos destacados */
+.text-gradient {
+  @apply bg-grad-violet bg-clip-text text-transparent;
+}
+
+/* Punto pulsante "en vivo" */
+.live-dot {
+  @apply inline-block w-2 h-2 rounded-full bg-electric animate-pulse-glow;
+}
+
+/* Skeleton shimmer para estados de carga */
+.skeleton {
+  @apply rounded-md bg-gray-200 relative overflow-hidden;
+  background-image: linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,.7) 50%, rgba(255,255,255,0) 100%);
+  background-size: 400px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+.animate-in {
+  animation: floatUp .35s ease-out;
+}

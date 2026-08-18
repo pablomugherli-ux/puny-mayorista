@@ -1,0 +1,24 @@
+# Dependencias — se reinstalan con "npm install", no tienen que vivir en git
+node_modules/
+
+# Salidas de build — se regeneran con "npm run build"
+.next/
+out/
+
+# Local Netlify folder
+.netlify
+
+# Variables de entorno con secretos reales — nunca deben subirse
+.env
+.env.local
+.env*.local
+
+# Backups locales de la base de datos (contienen datos reales de clientes —
+# nunca deben subirse a un repositorio ni compartirse fuera del control
+# interno; ver scripts/backup-db.sh y RUNBOOK_BACKUP_RECUPERACION.md)
+backups/
+
+# Logs y archivos temporales del editor/SO
+*.log
+.DS_Store
+Thumbs.db
