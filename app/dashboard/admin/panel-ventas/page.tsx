@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
 const Pedidos = dynamic(() => import("../pedidos/page"), { ssr: false });
@@ -20,32 +21,36 @@ const TABS = [
   { key: "mapa", label: "Mapa en Vivo", Comp: Mapa },
 ];
 
-export default function PanelVentas() {
-  const [tab, setTab] = useState(TABS[0].key);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("tab");
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-  }, []);
-
-  const activa = TABS.find((t) => t.key === tab);
+// La fila de botones para cambiar de solapa se retiró de acá (agosto
+// 2026): duplicaba exactamente la cinta de accesos directos del Ribbon
+// (nivel 2), que ya navega a cada uno de estos mismos destinos con su
+// propio resaltado de "activo" — tener las dos filas obligaba a
+// clickear dos veces lo mismo para que se notara la selección. El Ribbon
+// sigue siendo sticky arriba de la pantalla, así que la navegación entre
+// solapas de este módulo sigue disponible en todo momento.
+//
+// El tab activo se lee directamente de la URL con useSearchParams (no con
+// estado local + efecto de una sola corrida): así, si el usuario ya está
+// en esta página y clickea otra solapa del Ribbon (nivel 2), el cambio de
+// query string re-renderiza este componente y se ve el cambio al toque —
+// antes había que salir y volver a entrar para que se notara.
+function PanelVentasInner() {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab");
+  const activa = TABS.find((t) => t.key === tab) || TABS[0];
   return (
     <div>
       <h1 className="text-xl font-bold text-navy mb-1">Ventas</h1>
       <p className="text-sm text-gray-500 mb-4">Los tres canales de venta (Mayorista, Masivo y Cuentas Clave), catálogo y clientes.</p>
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded text-sm font-medium ${tab === t.key ? "bg-navy text-white" : "bg-gray-100 text-gray-600"}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
       {activa && <activa.Comp />}
     </div>
+  );
+}
+
+export default function PanelVentas() {
+  return (
+    <Suspense fallback={null}>
+      <PanelVentasInner />
+    </Suspense>
   );
 }

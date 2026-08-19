@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 
 const Tesoreria = dynamic(() => import("../tesoreria/page"), { ssr: false });
@@ -18,32 +19,31 @@ const TABS = [
   { key: "accesos", label: "Empleados y Accesos", Comp: () => <Tesoreria soloTabs={["accesos"]} initialTab="accesos" /> },
 ];
 
-export default function PanelPersonal() {
-  const [tab, setTab] = useState(TABS[0].key);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("tab");
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-  }, []);
-
-  const activa = TABS.find((t) => t.key === tab);
+// El tab activo se lee de la URL con useSearchParams (reactivo a cambios de
+// query string), no de estado local + efecto de una sola corrida — ver
+// components/Ribbon.tsx para el detalle del bug que esto corrige.
+function PanelPersonalInner() {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab");
+  const activa = TABS.find((t) => t.key === tab) || TABS[0];
   return (
     <div>
       <h1 className="text-xl font-bold text-navy mb-1">Personal</h1>
       <p className="text-sm text-gray-500 mb-4">Legajos, liquidación de sueldos, vacaciones y licencias, y accesos de empleados.</p>
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded text-sm font-medium ${tab === t.key ? "bg-navy text-white" : "bg-gray-100 text-gray-600"}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* La fila de botones para cambiar de solapa se retiró de acá (agosto 2026):
+          duplicaba la cinta de accesos directos del Ribbon (nivel 2), que ya navega
+          a estos mismos destinos con su propio resaltado de "activo" — tener las dos
+          filas obligaba a clickear dos veces lo mismo para que se notara la selección.
+          El Ribbon es sticky, así que sigue disponible en todo momento. */}
       {activa && <activa.Comp />}
     </div>
+  );
+}
+
+export default function PanelPersonal() {
+  return (
+    <Suspense fallback={null}>
+      <PanelPersonalInner />
+    </Suspense>
   );
 }

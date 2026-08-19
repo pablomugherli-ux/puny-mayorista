@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
@@ -308,36 +309,32 @@ const TABS = [
   // Queda una sola, en Sistema → Accesos.
 ];
 
-export default function PanelInformes() {
-  const [tab, setTab] = useState(TABS[0].key);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("tab");
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-  }, []);
-
-  const activa = TABS.find((t) => t.key === tab);
+// El tab activo se lee de la URL con useSearchParams (reactivo a cambios de
+// query string), no de estado local + efecto de una sola corrida — ver
+// components/Ribbon.tsx para el detalle del bug que esto corrige.
+function PanelInformesInner() {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get("tab");
+  const activa = TABS.find((t) => t.key === tab) || TABS[0];
 
   return (
     <div>
       <h1 className="text-xl font-bold text-navy mb-1">Informes y Reportes</h1>
       <p className="text-sm text-gray-500 mb-4">Panel ejecutivo, analítica cross-canal e informes por módulo con filtros y exportación a PDF/Excel.</p>
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium ${tab === t.key ? "bg-navy text-white" : "bg-gray-100 text-gray-600"}`}
-            >
-              <Icon size={14} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* La fila de botones para cambiar de solapa se retiró de acá (agosto 2026):
+          duplicaba la cinta de accesos directos del Ribbon (nivel 2), que ya navega
+          a estos mismos destinos con su propio resaltado de "activo" — tener las dos
+          filas obligaba a clickear dos veces lo mismo para que se notara la selección.
+          El Ribbon es sticky, así que sigue disponible en todo momento. */}
       {activa && <activa.Comp />}
     </div>
+  );
+}
+
+export default function PanelInformes() {
+  return (
+    <Suspense fallback={null}>
+      <PanelInformesInner />
+    </Suspense>
   );
 }

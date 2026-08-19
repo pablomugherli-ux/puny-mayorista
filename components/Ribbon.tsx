@@ -1,18 +1,52 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { RIBBON_TABS } from "@/lib/ribbonConfig";
 import Logo from "./Logo";
 
+// useSearchParams() (usado más abajo para saber qué botón de nivel 2 está
+// activo) exige estar envuelto en Suspense en Next — de lo contrario el
+// export estático falla en build. RibbonInner hace el trabajo real; este
+// wrapper es solo el boundary. El fallback no debería verse nunca en la
+// práctica (la navegación es instantánea, client-side).
 export default function Ribbon() {
+  return (
+    <Suspense fallback={<div className="h-[92px] md:h-[84px] border-b border-gray-200 bg-white" />}>
+      <RibbonInner />
+    </Suspense>
+  );
+}
+
+function RibbonInner() {
   const { profile, tenant, signOut } = useAuth();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [tabHover, setTabHover] = useState<string | null>(null);
 
   const tabActivaKey = RIBBON_TABS.find((t) => pathname.startsWith(t.href))?.key || RIBBON_TABS[0].key;
   const tabMostrada = RIBBON_TABS.find((t) => t.key === (tabHover || tabActivaKey)) || RIBBON_TABS[0];
+
+  // Bug reportado por Pablo (agosto 2026): al hacer clic en una pestaña, los
+  // botones de la cinta de abajo (nivel 2) no mostraban cuál estaba activo
+  // — no tenían ningún estilo "seleccionado", solo hover. Como el panel de
+  // abajo (nivel 3) sí tenía su propia fila de solapas con ese resaltado,
+  // duplicando exactamente las mismas opciones, el usuario terminaba
+  // clickeando dos veces lo mismo para "confirmar" la selección. Se agrega
+  // el resaltado acá (comparando path + query real contra cada botón) y se
+  // retira la fila duplicada de cada panel-*.tsx — ver esos archivos.
+  const queryActual = searchParams.toString();
+  const hrefActual = queryActual ? `${pathname}?${queryActual}` : pathname;
+  // Sin query en la URL (recién se hizo clic en la pestaña de nivel 1, sin
+  // pasar por un botón específico), el panel muestra su primera solapa por
+  // defecto — así que el primer botón del primer grupo es el "activo" real.
+  const primerBotonDeLaTab = tabMostrada.groups[0]?.buttons[0]?.href;
+  function botonActivo(href: string) {
+    if (href === hrefActual) return true;
+    if (!queryActual && href === primerBotonDeLaTab && pathname === tabMostrada.href) return true;
+    return false;
+  }
 
   return (
     <div className="border-b border-gray-200 bg-white sticky top-0 z-20">
@@ -67,14 +101,17 @@ export default function Ribbon() {
             <div className="flex gap-1.5">
               {g.buttons.map((b) => {
                 const BIcon = b.icon;
+                const activo = botonActivo(b.href);
                 return (
                   <Link
                     key={b.label}
                     href={b.href}
-                    className="flex flex-col items-center gap-1 px-2.5 py-2.5 md:py-1.5 rounded hover:bg-white hover:shadow-sm text-center min-w-[72px] shrink-0"
+                    className={`flex flex-col items-center gap-1 px-2.5 py-2.5 md:py-1.5 rounded text-center min-w-[72px] shrink-0 ${
+                      activo ? "bg-white shadow-sm ring-1 ring-navy/20" : "hover:bg-white hover:shadow-sm"
+                    }`}
                   >
                     <BIcon size={18} className="text-navy" />
-                    <span className="text-[10.5px] leading-tight text-gray-600">{b.label}</span>
+                    <span className={`text-[10.5px] leading-tight ${activo ? "text-navy font-semibold" : "text-gray-600"}`}>{b.label}</span>
                   </Link>
                 );
               })}
