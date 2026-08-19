@@ -34,7 +34,17 @@ type Tab = "compras" | "depositos";
 // mínimo) aunque la RLS ya se lo bloqueara al hacer clic. Se separa en dos
 // pestañas — Compras y Depósitos — cada una gateada por su propio permiso,
 // mismo patrón que Tesorería.
-export default function StockAdmin() {
+//
+// Reformulación de navegación (agosto 2026): Dueño/Administrador entran acá
+// desde dos pestañas distintas del Ribbon ("Stock" agrupa Compras y
+// Depósitos junto con Importaciones/Logística, separado de "Finanzas" — ver
+// PUNY_Propuesta_Reformulacion_Navegacion.docx). Como ambas siguen siendo la
+// misma página/tabla de permisos, se le suma un prop opcional `soloTabs`
+// para que cada punto de entrada del Ribbon muestre solo el sub-grupo que le
+// corresponde, en vez de siempre las 2 solapas completas. Sin el prop (uso
+// directo por URL, o un rol delegado con un solo permiso) el comportamiento
+// es idéntico al de antes.
+export default function StockAdmin({ soloTabs, initialTab }: { soloTabs?: Tab[]; initialTab?: Tab } = {}) {
   const { profile, tenant, permisos } = useAuth();
   const esTotal = !!profile && ["dueno", "administrador"].includes(profile.role);
   // RBAC dinámico — Fase 5: profiles.permiso_stock/permiso_depositos quedan
@@ -45,9 +55,9 @@ export default function StockAdmin() {
   const TABS = ([
     ["compras", "Compras", veCompras],
     ["depositos", "Depósitos", veDepositos],
-  ] as const).filter(([, , visible]) => visible);
+  ] as const).filter(([k, , visible]) => visible && (!soloTabs || soloTabs.includes(k as Tab)));
 
-  const [tab, setTab] = useState<Tab | null>(null);
+  const [tab, setTab] = useState<Tab | null>(initialTab && TABS.some(([k]) => k === initialTab) ? initialTab : null);
   useEffect(() => {
     if (!tab && TABS.length) setTab(TABS[0][0] as Tab);
   }, [TABS.length]);

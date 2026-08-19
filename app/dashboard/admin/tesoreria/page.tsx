@@ -37,7 +37,15 @@ async function miId() {
 // Personal) cada uno debe ver solo lo suyo — se gatea cada solapa acá,
 // además de la RLS de fondo que ya lo exige igual (esto es solo para no
 // mostrar botones que van a fallar).
-export default function TesoreriaAdmin() {
+// Reformulación de navegación (agosto 2026): Dueño/Administrador entran acá
+// desde dos pestañas distintas del Ribbon — "Finanzas" (Caja + IVA) y
+// "Personal" (Sueldos, Legajos, Licencias, Accesos) — separadas porque son
+// dos preguntas de negocio distintas ("¿cómo está la plata?" vs. "¿cómo está
+// mi gente?"), ver PUNY_Propuesta_Reformulacion_Navegacion.docx. Sigue siendo
+// una sola página con un solo set de permisos; `soloTabs` restringe qué
+// solapas ofrece cada punto de entrada. Sin el prop, comportamiento idéntico
+// al de antes (todas las solapas visibles según permiso).
+export default function TesoreriaAdmin({ soloTabs, initialTab }: { soloTabs?: Tab[]; initialTab?: Tab } = {}) {
   const { profile, permisos } = useAuth();
   const esTotal = !!profile && ["dueno", "administrador"].includes(profile.role);
   // RBAC dinámico — Fase 5: profiles.permiso_caja/rrhh/finanzas quedan
@@ -57,9 +65,9 @@ export default function TesoreriaAdmin() {
     ["legajos", "Legajos y SICOSS", veRrhh],
     ["licencias", "Vacaciones y Licencias", veRrhh],
     ["accesos", "Empleados y Accesos", esTotal],
-  ] as const).filter(([, , visible]) => visible);
+  ] as const).filter(([k, , visible]) => visible && (!soloTabs || soloTabs.includes(k as Tab)));
 
-  const [tab, setTab] = useState<Tab | null>(null);
+  const [tab, setTab] = useState<Tab | null>(initialTab && TABS.some(([k]) => k === initialTab) ? initialTab : null);
   useEffect(() => {
     if (!tab && TABS.length) setTab(TABS[0][0] as Tab);
   }, [TABS.length]);

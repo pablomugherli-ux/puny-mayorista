@@ -1,49 +1,18 @@
 "use client";
-import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-const Empresa = dynamic(() => import("../empresa/page"), { ssr: false });
-const Zonas = dynamic(() => import("../zonas/page"), { ssr: false });
-const Cobradores = dynamic(() => import("../cobradores/page"), { ssr: false });
-const Comisiones = dynamic(() => import("../comisiones/page"), { ssr: false });
-const Objetivos = dynamic(() => import("../objetivos/page"), { ssr: false });
-const Ofertas = dynamic(() => import("../ofertas/page"), { ssr: false });
-
-const TABS = [
-  { key: "empresa", label: "Datos de la Empresa", Comp: Empresa },
-  { key: "zonas", label: "Zonas y Circuitos", Comp: Zonas },
-  { key: "cobradores", label: "Vincular Cobradores", Comp: Cobradores },
-  { key: "comisiones", label: "Esquemas de Comisión", Comp: Comisiones },
-  { key: "objetivos", label: "Objetivos Comerciales", Comp: Objetivos },
-  { key: "ofertas", label: "Ofertas vigentes", Comp: Ofertas },
-];
-
-export default function PanelConfiguracion() {
-  const [tab, setTab] = useState(TABS[0].key);
-
+// Reformulación de navegación (agosto 2026): "Configuración" se disolvió —
+// Datos de la Empresa/Zonas pasaron a "Sistema" y Comisiones/Objetivos/
+// Ofertas/Vincular Cobradores pasaron a "Comercial" (pestaña propia, ya no
+// mezclados con configuración técnica de una sola vez).
+// Ver PUNY_Propuesta_Reformulacion_Navegacion.docx, sección 6.
+// Esta ruta ya no está enlazada desde ningún menú; se deja como redirect (en
+// vez de borrarla) por si alguien la tenía guardada como favorito.
+export default function PanelConfiguracionRedirect() {
+  const router = useRouter();
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("tab");
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-  }, []);
-
-  const activa = TABS.find((t) => t.key === tab);
-  return (
-    <div>
-      <h1 className="text-xl font-bold text-navy mb-1">Configuración</h1>
-      <p className="text-sm text-gray-500 mb-4">Datos de la empresa, zonas de venta, vínculos de cobranza y reglas comerciales de fondo.</p>
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded text-sm font-medium ${tab === t.key ? "bg-navy text-white" : "bg-gray-100 text-gray-600"}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {activa && <activa.Comp />}
-    </div>
-  );
+    router.replace("/dashboard/admin/panel-sistema?tab=empresa");
+  }, [router]);
+  return null;
 }

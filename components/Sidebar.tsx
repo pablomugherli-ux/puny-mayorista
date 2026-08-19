@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { ROLE_LABEL } from "@/lib/types";
+import { MODULO_LABEL, MODULO_ORDEN } from "@/lib/modulos";
 import { supabase } from "@/lib/supabaseClient";
 import Logo from "./Logo";
 
-type LinkDef = { href: string; label: string; claves: string[] };
+type LinkDef = { href: string; label: string; claves: string[]; modulo: string };
 
 // ============================================================================
 // RBAC dinámico — Fase 4: el Sidebar ya no deriva los enlaces de role/permiso_*
@@ -21,49 +22,66 @@ type LinkDef = { href: string; label: string; claves: string[] };
 // El Usuario Maestro queda fuera de este catálogo (no participa del sistema
 // de permisos dinámicos) — se resuelve aparte, como siempre.
 // ============================================================================
+// Reformulación de navegación (agosto 2026) — ver
+// PUNY_Propuesta_Reformulacion_Navegacion.docx. Dos cambios sobre el
+// catálogo anterior, además de sumar `modulo` a cada entrada (se usa más
+// abajo para agrupar visualmente cuando un rol tiene varios accesos a la
+// vez, en vez de la lista plana de antes):
+//  1. "Stock y Compras" / "Depósitos y Stock" apuntaban las dos al mismo
+//     /dashboard/admin/stock — un usuario con ambos permisos las veía
+//     duplicadas. Quedan fusionadas en una sola entrada.
+//  2. "Tesorería y Sueldos" era un único enlace genérico compartido por 3
+//     roles (Tesorero, Jefe de Personal, Cajero) que en los hechos solo ven
+//     1 de las 6 solapas internas según su permiso puntual. Se separa en
+//     entradas específicas por permiso, con el nombre de lo que cada rol
+//     realmente puede hacer ahí.
+// ============================================================================
 const LINK_CATALOG: LinkDef[] = [
   // Campo — Vendedor
-  { href: "/dashboard/campo/vendedor", label: "Mis Clientes", claves: ["campo.vendedor.mis_clientes"] },
-  { href: "/dashboard/campo/vendedor/nuevo-pedido", label: "Nuevo Pedido", claves: ["campo.vendedor.nuevo_pedido"] },
-  { href: "/dashboard/campo/vendedor/pedidos", label: "Mis Pedidos", claves: ["campo.vendedor.mis_pedidos"] },
+  { href: "/dashboard/campo/vendedor", label: "Mis Clientes", claves: ["campo.vendedor.mis_clientes"], modulo: "campo" },
+  { href: "/dashboard/campo/vendedor/nuevo-pedido", label: "Nuevo Pedido", claves: ["campo.vendedor.nuevo_pedido"], modulo: "campo" },
+  { href: "/dashboard/campo/vendedor/pedidos", label: "Mis Pedidos", claves: ["campo.vendedor.mis_pedidos"], modulo: "campo" },
   // Campo — Entrega
-  { href: "/dashboard/campo/repartidor", label: "Hoja de Ruta", claves: ["campo.entrega.hoja_ruta"] },
+  { href: "/dashboard/campo/repartidor", label: "Hoja de Ruta", claves: ["campo.entrega.hoja_ruta"], modulo: "campo" },
   // Campo — Cobrador
-  { href: "/dashboard/campo/cobrador", label: "Hoja de Cobro", claves: ["campo.cobrador.hoja_cobro"] },
+  { href: "/dashboard/campo/cobrador", label: "Hoja de Cobro", claves: ["campo.cobrador.hoja_cobro"], modulo: "campo" },
   // Campo — Vigilador
-  { href: "/dashboard/campo/vigilador", label: "Mi Ronda", claves: ["campo.vigilador.mi_ronda"] },
+  { href: "/dashboard/campo/vigilador", label: "Mi Ronda", claves: ["campo.vigilador.mi_ronda"], modulo: "campo" },
   // Campo — común a todos los roles de campo
-  { href: "/dashboard/campo/comisiones", label: "Mis Comisiones y Objetivos", claves: ["campo.comun.comisiones"] },
-  { href: "/dashboard/campo/mi-portal", label: "Mi Portal (Recibos y Licencias)", claves: ["campo.comun.mi_portal"] },
+  { href: "/dashboard/campo/comisiones", label: "Mis Comisiones y Objetivos", claves: ["campo.comun.comisiones"], modulo: "campo" },
+  { href: "/dashboard/campo/mi-portal", label: "Mi Portal (Recibos y Licencias)", claves: ["campo.comun.mi_portal"], modulo: "campo" },
   // Cobro de cartera propia (Vendedor/Entrega con el permiso puntual sumado)
-  { href: "/dashboard/campo/cobro-clientes", label: "Cobrar a mis clientes", claves: ["cobros.clientes_propios"] },
+  { href: "/dashboard/campo/cobro-clientes", label: "Cobrar a mis clientes", claves: ["cobros.clientes_propios"], modulo: "campo" },
   // Portal Cliente B2B
-  { href: "/dashboard/b2b", label: "Catálogo y Pedido", claves: ["b2b.catalogo_pedido"] },
-  { href: "/dashboard/b2b/pedidos", label: "Mis Pedidos", claves: ["b2b.mis_pedidos"] },
-  { href: "/dashboard/b2b/cuenta-corriente", label: "Cuenta Corriente", claves: ["b2b.cuenta_corriente"] },
+  { href: "/dashboard/b2b", label: "Catálogo y Pedido", claves: ["b2b.catalogo_pedido"], modulo: "b2b" },
+  { href: "/dashboard/b2b/pedidos", label: "Mis Pedidos", claves: ["b2b.mis_pedidos"], modulo: "b2b" },
+  { href: "/dashboard/b2b/cuenta-corriente", label: "Cuenta Corriente", claves: ["b2b.cuenta_corriente"], modulo: "b2b" },
   // Supervisor — Informes en solo lectura
-  { href: "/dashboard/admin/panel-inicio", label: "Inicio", claves: ["informes.panel_inicio_supervisor"] },
-  { href: "/dashboard/admin/panel-informes", label: "Informes y Reportes", claves: ["informes.panel_informes_supervisor"] },
-  { href: "/dashboard/admin/seguridad?tab=vigilancia", label: "Vigilancia (lectura)", claves: ["seguridad.vigilancia_lectura"] },
+  { href: "/dashboard/admin/panel-inicio", label: "Inicio", claves: ["informes.panel_inicio_supervisor"], modulo: "informes" },
+  { href: "/dashboard/admin/panel-informes", label: "Informes y Reportes", claves: ["informes.panel_informes_supervisor"], modulo: "informes" },
+  { href: "/dashboard/admin/seguridad?tab=vigilancia", label: "Vigilancia (lectura)", claves: ["seguridad.vigilancia_lectura"], modulo: "sistema" },
   // Canales de venta especiales
-  { href: "/dashboard/admin/masivo", label: "Punto de Venta", claves: ["masivo.pos"] },
-  { href: "/dashboard/admin/cuentas-clave", label: "Mis Cuentas Clave", claves: ["cuentas_clave.mis_cuentas"] },
-  { href: "/dashboard/admin/whatsapp-wp", label: "Bandeja de WhatsApp", claves: ["comunicacion.bandeja_wp"] },
+  { href: "/dashboard/admin/masivo", label: "Punto de Venta", claves: ["masivo.pos"], modulo: "ventas" },
+  { href: "/dashboard/admin/cuentas-clave", label: "Mis Cuentas Clave", claves: ["cuentas_clave.mis_cuentas"], modulo: "ventas" },
+  { href: "/dashboard/admin/whatsapp-wp", label: "Bandeja de WhatsApp", claves: ["comunicacion.bandeja_wp"], modulo: "comunicacion" },
   // Portal Proveedor
-  { href: "/dashboard/proveedor", label: "Mis Órdenes de Compra", claves: ["proveedor.ordenes_compra"] },
-  { href: "/dashboard/proveedor/cuenta-corriente", label: "Cuenta Corriente", claves: ["proveedor.cuenta_corriente"] },
-  { href: "/dashboard/proveedor/comprobantes", label: "Subir Comprobantes", claves: ["proveedor.comprobantes"] },
-  // Módulos administrativos delegables (antes permiso_finanzas/stock/etc.)
-  { href: "/dashboard/admin/finanzas", label: "Finanzas (Bancos/Proveedores/Cartera)", claves: ["finanzas.acceso"] },
-  { href: "/dashboard/admin/contabilidad", label: "Contabilidad", claves: ["finanzas.acceso"] },
-  { href: "/dashboard/admin/cashflow", label: "Cash Flow Proyectado", claves: ["finanzas.acceso"] },
-  { href: "/dashboard/admin/stock", label: "Stock y Compras", claves: ["stock.acceso"] },
-  { href: "/dashboard/admin/importaciones", label: "Importaciones", claves: ["stock.acceso"] },
-  { href: "/dashboard/admin/tesoreria", label: "Tesorería y Sueldos", claves: ["rrhh.acceso", "caja.acceso"] },
-  { href: "/dashboard/admin/seguridad", label: "PUNY Seguridad", claves: ["seguridad.acceso"] },
-  { href: "/dashboard/admin/redes-sociales", label: "PUNY Redes Sociales", claves: ["marketing.acceso"] },
-  { href: "/dashboard/admin/stock", label: "Depósitos y Stock", claves: ["depositos.acceso"] },
-  { href: "/dashboard/admin/logistica", label: "Logística", claves: ["logistica.acceso"] },
+  { href: "/dashboard/proveedor", label: "Mis Órdenes de Compra", claves: ["proveedor.ordenes_compra"], modulo: "proveedor" },
+  { href: "/dashboard/proveedor/cuenta-corriente", label: "Cuenta Corriente", claves: ["proveedor.cuenta_corriente"], modulo: "proveedor" },
+  { href: "/dashboard/proveedor/comprobantes", label: "Subir Comprobantes", claves: ["proveedor.comprobantes"], modulo: "proveedor" },
+  // Finanzas (plata) — módulos administrativos delegables
+  { href: "/dashboard/admin/finanzas", label: "Bancos/Proveedores/Cartera", claves: ["finanzas.acceso"], modulo: "finanzas" },
+  { href: "/dashboard/admin/contabilidad", label: "Contabilidad", claves: ["finanzas.acceso"], modulo: "finanzas" },
+  { href: "/dashboard/admin/cashflow", label: "Cash Flow Proyectado", claves: ["finanzas.acceso"], modulo: "finanzas" },
+  { href: "/dashboard/admin/tesoreria", label: "Caja Diaria", claves: ["caja.acceso"], modulo: "finanzas" },
+  // Stock (mercadería)
+  { href: "/dashboard/admin/stock", label: "Stock y Depósitos", claves: ["stock.acceso", "depositos.acceso"], modulo: "stock" },
+  { href: "/dashboard/admin/importaciones", label: "Importaciones", claves: ["stock.acceso"], modulo: "stock" },
+  { href: "/dashboard/admin/logistica", label: "Logística", claves: ["logistica.acceso"], modulo: "stock" },
+  // Personal (RRHH)
+  { href: "/dashboard/admin/tesoreria", label: "Legajos, Sueldos y Licencias", claves: ["rrhh.acceso"], modulo: "personal" },
+  // Comunicación / Sistema
+  { href: "/dashboard/admin/redes-sociales", label: "PUNY Redes Sociales", claves: ["marketing.acceso"], modulo: "comunicacion" },
+  { href: "/dashboard/admin/seguridad", label: "PUNY Seguridad", claves: ["seguridad.acceso"], modulo: "sistema" },
 ];
 
 export default function Sidebar() {
@@ -71,8 +89,27 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   const links: LinkDef[] = profile?.role === "master"
-    ? [{ href: "/dashboard/master", label: "Distribuidoras (Tenants)", claves: [] }]
+    ? [{ href: "/dashboard/master", label: "Distribuidoras (Tenants)", claves: [], modulo: "" }]
     : LINK_CATALOG.filter((l) => l.claves.some((c) => permisos.has(c)));
+
+  // Reformulación de navegación (agosto 2026): con pocos accesos (hasta 4,
+  // el mismo criterio que ya funcionaba bien en Campo/B2B/Proveedor) se
+  // navega directo, sin agrupar. Con más —típico de un rol administrativo
+  // con varios permisos delegados a la vez (Tesorero, Administrador con
+  // accesos puntuales)— se agrupan por módulo en vez de la lista plana de
+  // antes, reutilizando la misma taxonomía de módulos que ya usa el
+  // checklist de permisos (lib/modulos.ts). Si todos los accesos caen en un
+  // solo módulo (p. ej. Vendedor: 5 enlaces, pero todos "campo") no se
+  // agrupa igual — un encabezado de sección no ayuda si no hay nada que
+  // distinguir, y Campo/B2B/Proveedor deben quedar exactamente como estaban.
+  // Ver PUNY_Propuesta_Reformulacion_Navegacion.docx, principios 6 y 7.
+  const modulosDistintos = new Set(links.map((l) => l.modulo)).size;
+  const agrupar = links.length > 4 && modulosDistintos > 1;
+  const grupos = agrupar
+    ? MODULO_ORDEN
+        .map((m) => ({ modulo: m, label: MODULO_LABEL[m] || m, items: links.filter((l) => l.modulo === m) }))
+        .filter((g) => g.items.length > 0)
+    : [];
 
   const [erroresContablesPendientes, setErroresContablesPendientes] = useState(0);
   // Mobile: el Sidebar pasa a ser un drawer off-canvas (fixed, oculto por
@@ -146,27 +183,22 @@ export default function Sidebar() {
           </button>
         </div>
         <nav className="flex-1 py-3">
-          {links.map((l) => {
-            const active = pathname === l.href;
-            const esContabilidad = l.href === "/dashboard/admin/panel-finanzas";
-            return (
-              <Link
-                key={l.href + l.label}
-                href={l.href}
-                onClick={() => setOpen(false)}
-                className={`flex items-center justify-between px-5 py-3 md:py-2.5 text-sm ${
-                  active ? "bg-white/15 font-semibold" : "text-white/80 hover:bg-white/10"
-                }`}
-              >
-                <span>{l.label}</span>
-                {esContabilidad && erroresContablesPendientes > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] leading-none rounded-full px-1.5 py-1" title="Errores de automatización contable pendientes">
-                    {erroresContablesPendientes}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+          {agrupar ? (
+            grupos.map((g) => (
+              <div key={g.modulo} className="mb-1">
+                <div className="px-5 pt-3 pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-white/40">
+                  {g.label}
+                </div>
+                {g.items.map((l) => (
+                  <SidebarLink key={l.href + l.label} link={l} pathname={pathname} onNavigate={() => setOpen(false)} erroresContablesPendientes={erroresContablesPendientes} />
+                ))}
+              </div>
+            ))
+          ) : (
+            links.map((l) => (
+              <SidebarLink key={l.href + l.label} link={l} pathname={pathname} onNavigate={() => setOpen(false)} erroresContablesPendientes={erroresContablesPendientes} />
+            ))
+          )}
         </nav>
         <div className="px-5 py-4 border-t border-white/10 text-xs">
           <div className="mb-2 truncate">{profile?.email}</div>
@@ -176,5 +208,26 @@ export default function Sidebar() {
         </div>
       </aside>
     </>
+  );
+}
+
+function SidebarLink({ link: l, pathname, onNavigate, erroresContablesPendientes }: { link: LinkDef; pathname: string; onNavigate: () => void; erroresContablesPendientes: number }) {
+  const active = pathname === l.href;
+  const esContabilidad = l.href === "/dashboard/admin/contabilidad";
+  return (
+    <Link
+      href={l.href}
+      onClick={onNavigate}
+      className={`flex items-center justify-between px-5 py-3 md:py-2.5 text-sm ${
+        active ? "bg-white/15 font-semibold" : "text-white/80 hover:bg-white/10"
+      }`}
+    >
+      <span>{l.label}</span>
+      {esContabilidad && erroresContablesPendientes > 0 && (
+        <span className="bg-red-500 text-white text-[10px] leading-none rounded-full px-1.5 py-1" title="Errores de automatización contable pendientes">
+          {erroresContablesPendientes}
+        </span>
+      )}
+    </Link>
   );
 }

@@ -2,7 +2,7 @@ import {
   Home, PlusCircle, ClipboardList, Package, Store, Star, Users, Wallet, MapPin,
   Landmark, TrendingUp, Calculator, Banknote, Ship, MessageCircle, Share2, Bell,
   LayoutDashboard, PieChart, FileText, ShieldCheck, Building2, Tag, Percent, Target,
-  UserCheck, Plug, Bot, RotateCcw, Settings, Wrench, BarChart3, ShoppingCart, Radar, Truck,
+  UserCheck, Plug, Bot, RotateCcw, Wrench, BarChart3, ShoppingCart, Truck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -16,8 +16,8 @@ export const RIBBON_TABS: RibbonTab[] = [
     groups: [
       { label: "Panorama del día", buttons: [
         { label: "Nuevo Pedido", href: "/dashboard/admin/panel-ventas?tab=pedidos", icon: PlusCircle },
-        { label: "Ver Caja", href: "/dashboard/admin/panel-finanzas?tab=finanzas", icon: Wallet },
-        { label: "Stock por vencer", href: "/dashboard/admin/panel-finanzas?tab=stock", icon: Package },
+        { label: "Ver Caja", href: "/dashboard/admin/panel-finanzas?tab=caja", icon: Wallet },
+        { label: "Stock por vencer", href: "/dashboard/admin/panel-stock?tab=depositos", icon: Package },
         { label: "Dashboard Ejecutivo", href: "/dashboard/admin/panel-informes?tab=ejecutivo", icon: LayoutDashboard },
       ] },
     ],
@@ -41,20 +41,51 @@ export const RIBBON_TABS: RibbonTab[] = [
     ],
   },
   {
-    key: "finanzas", label: "Finanzas & Stock", icon: Landmark, href: "/dashboard/admin/panel-finanzas",
+    // Antes "Finanzas & Stock" era una sola pestaña con 6 destinos —
+    // plata y mercadería mezcladas. Se separa en dos conceptos de negocio
+    // distintos: acá solo la plata (bancos, caja, contabilidad, proyección).
+    // Ver PUNY_Propuesta_Reformulacion_Navegacion.docx, sección 6.
+    key: "finanzas", label: "Finanzas", icon: Landmark, href: "/dashboard/admin/panel-finanzas",
     groups: [
       { label: "Caja y Bancos", buttons: [
         { label: "Bancos/Proveedores/Cartera", href: "/dashboard/admin/panel-finanzas?tab=finanzas", icon: Landmark },
-        { label: "Cash Flow", href: "/dashboard/admin/panel-finanzas?tab=cashflow", icon: TrendingUp },
+        { label: "Caja Diaria", href: "/dashboard/admin/panel-finanzas?tab=caja", icon: Banknote },
+        { label: "Libro de IVA", href: "/dashboard/admin/panel-finanzas?tab=iva", icon: FileText },
       ] },
-      { label: "Contabilidad", buttons: [
+      { label: "Contabilidad y Proyección", buttons: [
         { label: "Contabilidad", href: "/dashboard/admin/panel-finanzas?tab=contabilidad", icon: Calculator },
-        { label: "Tesorería y Sueldos", href: "/dashboard/admin/panel-finanzas?tab=tesoreria", icon: Banknote },
+        { label: "Cash Flow Proyectado", href: "/dashboard/admin/panel-finanzas?tab=cashflow", icon: TrendingUp },
       ] },
-      { label: "Inventario", buttons: [
-        { label: "Stock y Compras", href: "/dashboard/admin/panel-finanzas?tab=stock", icon: Package },
-        { label: "Importaciones", href: "/dashboard/admin/panel-finanzas?tab=importaciones", icon: Ship },
-        { label: "Logística (todas las rutas)", href: "/dashboard/admin/logistica", icon: Truck },
+    ],
+  },
+  {
+    // La mitad "mercadería" de lo que antes era "Finanzas & Stock".
+    key: "stock", label: "Stock", icon: Package, href: "/dashboard/admin/panel-stock",
+    groups: [
+      { label: "Mercadería", buttons: [
+        { label: "Compras", href: "/dashboard/admin/panel-stock?tab=compras", icon: ShoppingCart },
+        { label: "Depósitos", href: "/dashboard/admin/panel-stock?tab=depositos", icon: Package },
+      ] },
+      { label: "Cadena de abastecimiento", buttons: [
+        { label: "Importaciones", href: "/dashboard/admin/panel-stock?tab=importaciones", icon: Ship },
+        { label: "Logística (todas las rutas)", href: "/dashboard/admin/panel-stock?tab=logistica", icon: Truck },
+      ] },
+    ],
+  },
+  {
+    // Antes era una solapa más adentro de "Tesorería", que a su vez estaba
+    // adentro de "Finanzas & Stock" — 3 niveles para algo que ya es su
+    // propio módulo en el catálogo de permisos (personal.*). Pasa a tener
+    // jerarquía propia.
+    key: "personal", label: "Personal", icon: Users, href: "/dashboard/admin/panel-personal",
+    groups: [
+      { label: "Empleados", buttons: [
+        { label: "Legajos y SICOSS", href: "/dashboard/admin/panel-personal?tab=legajos", icon: FileText },
+        { label: "Empleados y Accesos", href: "/dashboard/admin/panel-personal?tab=accesos", icon: UserCheck },
+      ] },
+      { label: "Liquidación", buttons: [
+        { label: "Liquidación de Sueldos", href: "/dashboard/admin/panel-personal?tab=sueldos", icon: Banknote },
+        { label: "Vacaciones y Licencias", href: "/dashboard/admin/panel-personal?tab=licencias", icon: ClipboardList },
       ] },
     ],
   },
@@ -83,33 +114,37 @@ export const RIBBON_TABS: RibbonTab[] = [
         { label: "Informe de Stock", href: "/dashboard/admin/panel-informes?tab=stock", icon: Package },
         { label: "Informe de RRHH", href: "/dashboard/admin/panel-informes?tab=rrhh", icon: Users },
       ] },
-      { label: "Auditoría", buttons: [
-        { label: "PUNY Seguridad", href: "/dashboard/admin/panel-informes?tab=seguridad", icon: ShieldCheck },
-      ] },
+      // "PUNY Seguridad" se retira de acá — antes tenía 3 puertas de entrada
+      // distintas en este mismo menú (acá, y dos veces más en "Sistema").
+      // Queda una sola, en Sistema → Accesos.
     ],
   },
   {
-    key: "configuracion", label: "Configuración", icon: Settings, href: "/dashboard/admin/panel-configuracion",
+    // Antes convivía con "Configuración" (datos técnicos de la empresa).
+    // Son decisiones comerciales del día a día, no un ajuste de una sola
+    // vez — se separan para que tengan su propia visibilidad.
+    key: "comercial", label: "Comercial", icon: Target, href: "/dashboard/admin/panel-comercial",
     groups: [
-      { label: "Empresa", buttons: [
-        { label: "Datos de la Empresa", href: "/dashboard/admin/panel-configuracion?tab=empresa", icon: Building2 },
-        { label: "Zonas y Circuitos", href: "/dashboard/admin/panel-configuracion?tab=zonas", icon: MapPin },
-      ] },
-      { label: "Comercial", buttons: [
-        { label: "Esquemas de Comisión", href: "/dashboard/admin/panel-configuracion?tab=comisiones", icon: Percent },
-        { label: "Objetivos", href: "/dashboard/admin/panel-configuracion?tab=objetivos", icon: Target },
-        { label: "Ofertas vigentes", href: "/dashboard/admin/panel-configuracion?tab=ofertas", icon: Tag },
-        { label: "Vincular Cobradores", href: "/dashboard/admin/panel-configuracion?tab=cobradores", icon: UserCheck },
+      { label: "Ventas y equipo", buttons: [
+        { label: "Esquemas de Comisión", href: "/dashboard/admin/panel-comercial?tab=comisiones", icon: Percent },
+        { label: "Objetivos Comerciales", href: "/dashboard/admin/panel-comercial?tab=objetivos", icon: Target },
+        { label: "Ofertas vigentes", href: "/dashboard/admin/panel-comercial?tab=ofertas", icon: Tag },
+        { label: "Vincular Cobradores", href: "/dashboard/admin/panel-comercial?tab=cobradores", icon: UserCheck },
       ] },
     ],
   },
   {
+    // "Configuración" (Datos de la Empresa, Zonas) se fusiona acá — dos
+    // botones sueltos no ameritaban su propia pestaña de primer nivel.
     key: "sistema", label: "Sistema", icon: Wrench, href: "/dashboard/admin/panel-sistema",
     groups: [
+      { label: "Empresa", buttons: [
+        { label: "Datos de la Empresa", href: "/dashboard/admin/panel-sistema?tab=empresa", icon: Building2 },
+        { label: "Zonas y Circuitos", href: "/dashboard/admin/panel-sistema?tab=zonas", icon: MapPin },
+      ] },
       { label: "Accesos", buttons: [
         { label: "Usuarios y Permisos", href: "/dashboard/admin/panel-sistema?tab=usuarios", icon: Users },
         { label: "PUNY Seguridad", href: "/dashboard/admin/panel-sistema?tab=seguridad", icon: ShieldCheck },
-        { label: "Vigilancia (vigiladores)", href: "/dashboard/admin/panel-sistema?tab=seguridad", icon: Radar },
       ] },
       { label: "Plataforma", buttons: [
         { label: "Integraciones", href: "/dashboard/admin/panel-sistema?tab=integraciones", icon: Plug },

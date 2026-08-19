@@ -5,10 +5,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
 import StatCard from "@/components/StatCard";
 import { exportarPDF, exportarExcel } from "@/lib/reportes";
-import { LayoutDashboard, PieChart, ShoppingCart, Wallet, Package, Users, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, PieChart, ShoppingCart, Wallet, Package, Users } from "lucide-react";
 
 const Bi = dynamic(() => import("../bi/page"), { ssr: false });
-const Seguridad = dynamic(() => import("../seguridad/page"), { ssr: false });
 const DashboardEjecutivo = dynamic(() => import("./DashboardEjecutivo"), { ssr: false });
 
 const fmtMoneda = (n: number) => Number(n || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS" });
@@ -304,7 +303,9 @@ const TABS = [
   { key: "cobranzas", label: "Informe de Cobranzas", icon: Wallet, Comp: InformeCobranzas },
   { key: "stock", label: "Informe de Stock", icon: Package, Comp: InformeStock },
   { key: "rrhh", label: "Informe de RRHH", icon: Users, Comp: InformeRRHH },
-  { key: "seguridad", label: "PUNY Seguridad", icon: ShieldCheck, Comp: Seguridad },
+  // "PUNY Seguridad" se retiró de acá (agosto 2026, reformulación de
+  // navegación): tenía 3 puertas de entrada distintas en el menú del Dueño.
+  // Queda una sola, en Sistema → Accesos.
 ];
 
 export default function PanelInformes() {

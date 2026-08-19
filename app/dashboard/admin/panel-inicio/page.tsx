@@ -52,11 +52,11 @@ export default function PanelInicio() {
             <PlusCircle size={22} className="text-navy" />
             <span className="text-xs font-medium text-gray-700">Nuevo Pedido</span>
           </Link>
-          <Link href="/dashboard/admin/panel-finanzas?tab=finanzas" className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 text-center">
+          <Link href="/dashboard/admin/panel-finanzas?tab=caja" className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 text-center">
             <Wallet size={22} className="text-navy" />
             <span className="text-xs font-medium text-gray-700">Ver Caja</span>
           </Link>
-          <Link href="/dashboard/admin/panel-finanzas?tab=stock" className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 text-center">
+          <Link href="/dashboard/admin/panel-stock?tab=depositos" className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 text-center">
             <PackageSearch size={22} className="text-navy" />
             <span className="text-xs font-medium text-gray-700">Stock por vencer</span>
           </Link>
