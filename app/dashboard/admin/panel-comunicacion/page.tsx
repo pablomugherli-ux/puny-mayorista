@@ -6,13 +6,22 @@ import dynamic from "next/dynamic";
 const WhatsappWp = dynamic(() => import("../whatsapp-wp/page"), { ssr: false });
 const RedesSociales = dynamic(() => import("../redes-sociales/page"), { ssr: false });
 const Notificaciones = dynamic(() => import("../notificaciones/page"), { ssr: false });
+const Intercomunicador = dynamic(() => import("../intercomunicador/page"), { ssr: false });
+const Agenda = dynamic(() => import("../agenda/page"), { ssr: false });
+const Documentos = dynamic(() => import("../documentos/page"), { ssr: false });
 
 // Dashboard, PUNY BI y Reportes se mudaron a la pestaña "Informes y Reportes"
-// (panel-informes) — acá queda solo la mensajería con clientes.
+// (panel-informes) — acá queda la mensajería con clientes (WhatsApp, redes,
+// notificaciones) más el grupo "Equipo interno" (Fase G, agosto 2026):
+// intercomunicador, agenda personal y gestor documental — comunicación
+// interna de la distribuidora, no con clientes externos.
 const TABS = [
   { key: "whatsapp-wp", label: "PUNY WP (WhatsApp)", Comp: WhatsappWp },
   { key: "redes-sociales", label: "PUNY Redes Sociales", Comp: RedesSociales },
   { key: "notificaciones", label: "Notificaciones", Comp: Notificaciones },
+  { key: "intercomunicador", label: "Intercomunicador", Comp: Intercomunicador },
+  { key: "agenda", label: "Agenda Personal", Comp: Agenda },
+  { key: "documentos", label: "Gestor Documental", Comp: Documentos },
 ];
 
 // El tab activo se lee de la URL con useSearchParams (reactivo a cambios de

@@ -3,6 +3,7 @@ import {
   Landmark, TrendingUp, Calculator, Banknote, Ship, MessageCircle, Share2, Bell,
   LayoutDashboard, PieChart, FileText, ShieldCheck, Building2, Tag, Percent, Target,
   UserCheck, Plug, Bot, RotateCcw, Wrench, BarChart3, ShoppingCart, Truck,
+  MessageSquare, CalendarDays, FolderOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -98,6 +99,11 @@ export const RIBBON_TABS: RibbonTab[] = [
       ] },
       { label: "Avisos", buttons: [
         { label: "Notificaciones", href: "/dashboard/admin/panel-comunicacion?tab=notificaciones", icon: Bell },
+      ] },
+      { label: "Equipo interno", buttons: [
+        { label: "Intercomunicador", href: "/dashboard/admin/panel-comunicacion?tab=intercomunicador", icon: MessageSquare },
+        { label: "Agenda Personal", href: "/dashboard/admin/panel-comunicacion?tab=agenda", icon: CalendarDays },
+        { label: "Gestor Documental", href: "/dashboard/admin/panel-comunicacion?tab=documentos", icon: FolderOpen },
       ] },
     ],
   },
