@@ -153,6 +153,55 @@ export const COSTO_BANCARIO_TIPO_LABEL: Record<CostoBancario["tipo"], string> = 
   otro: "Otro",
 };
 
+// Fase B (agosto 2026) — Dinero en Billeteras Virtuales (KPI 5 del Panel
+// Principal del Dueño). Catálogo abierto: el Dueño da de alta cualquier
+// entidad (MercadoPago, MODO, etc.) sin límite de cantidad.
+export type Billetera = {
+  id: string;
+  tenant_id: string;
+  entidad: string;
+  alias_cuenta: string | null;
+  moneda: string;
+  saldo_actual: number;
+  activa: boolean;
+  created_at: string;
+};
+
+export type MovimientoBilletera = {
+  id: string;
+  tenant_id: string;
+  billetera_id: string;
+  tipo: "ingreso" | "egreso";
+  concepto: string;
+  monto: number;
+  comprobante_ref: string | null;
+  fecha: string;
+  created_at: string;
+};
+
+// Fase C — Cheques Librados propios (KPI 9), distinto de valores_cartera
+// (cheques de terceros recibidos, KPI 10).
+export type ChequePropio = {
+  id: string;
+  tenant_id: string;
+  banco_id: string | null;
+  numero: string;
+  beneficiario: string;
+  monto: number;
+  fecha_emision: string;
+  fecha_pago: string;
+  estado: "pendiente" | "pagado" | "rechazado" | "anulado";
+  notas: string | null;
+  created_at: string;
+};
+
+export const ESTADO_CHEQUE_PROPIO_LABEL: Record<ChequePropio["estado"], string> = {
+  pendiente: "Pendiente",
+  pagado: "Pagado",
+  rechazado: "Rechazado",
+  anulado: "Anulado",
+};
+
 export type Tenant = {
   id: string;
   nombre: string;

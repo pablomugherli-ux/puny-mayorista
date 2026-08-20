@@ -9,6 +9,7 @@ import {
   ESTADO_VALOR_LABEL,
   MEDIO_PAGO_LABEL,
   COSTO_BANCARIO_TIPO_LABEL,
+  ESTADO_CHEQUE_PROPIO_LABEL,
   type Banco,
   type MovimientoBancario,
   type Proveedor,
@@ -16,9 +17,12 @@ import {
   type ValorCartera,
   type MedioPagoConfig,
   type CostoBancario,
+  type Billetera,
+  type MovimientoBilletera,
+  type ChequePropio,
 } from "@/lib/types";
 
-type Tab = "bancos" | "proveedores" | "cartera" | "medios" | "escaneo";
+type Tab = "bancos" | "proveedores" | "cartera" | "billeteras" | "chequespropios" | "medios" | "escaneo";
 
 const fmtMoneda = (n: number, m = "ARS") => {
   try { return new Intl.NumberFormat("es-AR", { style: "currency", currency: m }).format(n); }
@@ -45,7 +49,9 @@ export default function FinanzasAdmin() {
         {([
           ["bancos", "Bancos"],
           ["proveedores", "Proveedores"],
-          ["cartera", "Cartera de Valores"],
+          ["cartera", "Cartera de Valores (terceros)"],
+          ["billeteras", "Billeteras Virtuales"],
+          ["chequespropios", "Cheques Librados (propios)"],
           ["medios", "Medios de Pago"],
           ["escaneo", "Escanear Comprobantes"],
         ] as const).map(([k, label]) => (
@@ -62,6 +68,8 @@ export default function FinanzasAdmin() {
       {tab === "bancos" && <TabBancos />}
       {tab === "proveedores" && <TabProveedores />}
       {tab === "cartera" && <TabCartera />}
+      {tab === "billeteras" && <TabBilleteras />}
+      {tab === "chequespropios" && <TabChequesPropios />}
       {tab === "medios" && <TabMedios />}
       {tab === "escaneo" && <TabEscaneo />}
     </div>
@@ -201,9 +209,12 @@ function TabBancos() {
     <div>
       <TabAcreditaciones bancos={bancos} onAcreditado={load} />
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      {/* Fase A (agosto 2026): antes solo se mostraban las primeras 2 monedas
+          (recorte de interfaz, no una limitación real) — ahora se muestran
+          todas, sin límite de divisas simultáneas. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Cuentas bancarias" value={String(bancos.length)} />
-        {Object.entries(totalPorMoneda).slice(0, 2).map(([moneda, total]) => (
+        {Object.entries(totalPorMoneda).map(([moneda, total]) => (
           <StatCard key={moneda} label={`Saldo consolidado (${moneda})`} value={fmtMoneda(total, moneda)} />
         ))}
       </div>
@@ -1098,6 +1109,227 @@ function TabCartera() {
 }
 
 // ============================================================================
+// Billeteras Virtuales (Fase B, agosto 2026) — KPI 5 del Panel Principal.
+// Catálogo abierto: se da de alta cualquier entidad (MercadoPago, MODO,
+// etc.) sin límite de cantidad. Mismo patrón que Bancos.
+// ============================================================================
+function TabBilleteras() {
+  const [billeteras, setBilleteras] = useState<Billetera[]>([]);
+  const [movs, setMovs] = useState<(MovimientoBilletera & { billeteras_virtuales: { entidad: string } | null })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nueva, setNueva] = useState({ entidad: "", alias_cuenta: "", moneda: "ARS" });
+  const [nuevoMov, setNuevoMov] = useState({ billetera_id: "", tipo: "ingreso" as "ingreso" | "egreso", concepto: "", monto: "", comprobante_ref: "" });
+
+  async function load() {
+    const [{ data: b }, { data: m }] = await Promise.all([
+      supabase.from("billeteras_virtuales").select("*").eq("activa", true).order("entidad"),
+      supabase.from("movimientos_billetera").select("*, billeteras_virtuales(entidad)").order("fecha", { ascending: false }).limit(50),
+    ]);
+    setBilleteras((b as Billetera[]) || []);
+    setMovs((m as any) || []);
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function crearBilletera(e: React.FormEvent) {
+    e.preventDefault();
+    const tid = await tenantId();
+    await supabase.from("billeteras_virtuales").insert({ tenant_id: tid, ...nueva });
+    setNueva({ entidad: "", alias_cuenta: "", moneda: "ARS" });
+    load();
+  }
+
+  async function crearMov(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nuevoMov.billetera_id || !nuevoMov.monto) return;
+    const tid = await tenantId();
+    await supabase.from("movimientos_billetera").insert({
+      tenant_id: tid,
+      billetera_id: nuevoMov.billetera_id,
+      tipo: nuevoMov.tipo,
+      concepto: nuevoMov.concepto,
+      monto: Number(nuevoMov.monto),
+      comprobante_ref: nuevoMov.comprobante_ref || null,
+    });
+    setNuevoMov({ billetera_id: "", tipo: "ingreso", concepto: "", monto: "", comprobante_ref: "" });
+    load();
+  }
+
+  const totalPorMoneda = billeteras.reduce((acc, b) => {
+    acc[b.moneda] = (acc[b.moneda] || 0) + Number(b.saldo_actual);
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Billeteras" value={String(billeteras.length)} />
+        {Object.entries(totalPorMoneda).map(([moneda, total]) => (
+          <StatCard key={moneda} label={`Saldo consolidado (${moneda})`} value={fmtMoneda(total, moneda)} />
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <div className="card">
+          <h3 className="text-sm font-semibold text-navy mb-3">Nueva billetera virtual</h3>
+          <form onSubmit={crearBilletera} className="space-y-2">
+            <input className="input" placeholder="Entidad (ej: Mercado Pago, MODO)" value={nueva.entidad} onChange={(e) => setNueva({ ...nueva, entidad: e.target.value })} required />
+            <div className="flex gap-2">
+              <input className="input" placeholder="Alias / CVU / cuenta" value={nueva.alias_cuenta} onChange={(e) => setNueva({ ...nueva, alias_cuenta: e.target.value })} />
+              <input className="input w-24" placeholder="Moneda" value={nueva.moneda} onChange={(e) => setNueva({ ...nueva, moneda: e.target.value })} />
+            </div>
+            <button className="btn-primary">Dar de alta</button>
+          </form>
+        </div>
+
+        <div className="card">
+          <h3 className="text-sm font-semibold text-navy mb-3">Registrar movimiento</h3>
+          <form onSubmit={crearMov} className="space-y-2">
+            <select className="input" value={nuevoMov.billetera_id} onChange={(e) => setNuevoMov({ ...nuevoMov, billetera_id: e.target.value })} required>
+              <option value="">Billetera…</option>
+              {billeteras.map((b) => <option key={b.id} value={b.id}>{b.entidad}{b.alias_cuenta ? ` — ${b.alias_cuenta}` : ""}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <select className="input" value={nuevoMov.tipo} onChange={(e) => setNuevoMov({ ...nuevoMov, tipo: e.target.value as any })}>
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+              </select>
+              <input className="input" type="number" step="0.01" min="0.01" placeholder="Importe" value={nuevoMov.monto} onChange={(e) => setNuevoMov({ ...nuevoMov, monto: e.target.value })} required />
+            </div>
+            <input className="input" placeholder="Concepto" value={nuevoMov.concepto} onChange={(e) => setNuevoMov({ ...nuevoMov, concepto: e.target.value })} required />
+            <input className="input" placeholder="Referencia (opcional)" value={nuevoMov.comprobante_ref} onChange={(e) => setNuevoMov({ ...nuevoMov, comprobante_ref: e.target.value })} />
+            <button className="btn-primary">Registrar</button>
+          </form>
+        </div>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <h3 className="text-sm font-semibold text-navy mb-3">Últimos movimientos</h3>
+        {loading ? <p className="text-gray-400">Cargando…</p> : (
+          <table className="tbl">
+            <thead><tr><th>Fecha</th><th>Billetera</th><th>Tipo</th><th>Concepto</th><th>Importe</th></tr></thead>
+            <tbody>
+              {movs.map((m) => (
+                <tr key={m.id}>
+                  <td>{fmtFecha(m.fecha)}</td>
+                  <td>{m.billeteras_virtuales?.entidad || "—"}</td>
+                  <td><span className={`badge ${m.tipo === "ingreso" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{m.tipo}</span></td>
+                  <td>{m.concepto}</td>
+                  <td>{fmtMoneda(m.monto)}</td>
+                </tr>
+              ))}
+              {movs.length === 0 && <tr><td colSpan={5} className="text-gray-400">Sin movimientos todavía.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Cheques Librados — propios (Fase C, agosto 2026) — KPI 9 del Panel
+// Principal. Distinto de "Cartera de Valores" (cheques de terceros
+// recibidos, un activo): esto son compromisos de pago emitidos, un pasivo.
+// ============================================================================
+function TabChequesPropios() {
+  const [cheques, setCheques] = useState<(ChequePropio & { bancos: { nombre: string } | null })[]>([]);
+  const [bancos, setBancos] = useState<Banco[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nuevo, setNuevo] = useState({ banco_id: "", numero: "", beneficiario: "", monto: "", fecha_emision: new Date().toISOString().slice(0, 10), fecha_pago: "", notas: "" });
+
+  async function load() {
+    const [{ data: c }, { data: b }] = await Promise.all([
+      supabase.from("cheques_propios").select("*, bancos(nombre)").order("fecha_pago"),
+      supabase.from("bancos").select("*").order("nombre"),
+    ]);
+    setCheques((c as any) || []);
+    setBancos((b as Banco[]) || []);
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function crear(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nuevo.numero || !nuevo.beneficiario || !nuevo.monto || !nuevo.fecha_pago) return;
+    const tid = await tenantId();
+    await supabase.from("cheques_propios").insert({
+      tenant_id: tid,
+      banco_id: nuevo.banco_id || null,
+      numero: nuevo.numero,
+      beneficiario: nuevo.beneficiario,
+      monto: Number(nuevo.monto),
+      fecha_emision: nuevo.fecha_emision,
+      fecha_pago: nuevo.fecha_pago,
+      notas: nuevo.notas || null,
+    });
+    setNuevo({ banco_id: "", numero: "", beneficiario: "", monto: "", fecha_emision: new Date().toISOString().slice(0, 10), fecha_pago: "", notas: "" });
+    load();
+  }
+
+  async function cambiarEstado(id: string, estado: ChequePropio["estado"]) {
+    await supabase.from("cheques_propios").update({ estado }).eq("id", id);
+    setCheques((cs) => cs.map((c) => (c.id === id ? { ...c, estado } : c)));
+  }
+
+  const pendientes = cheques.filter((c) => c.estado === "pendiente");
+  const totalPendiente = pendientes.reduce((a, c) => a + Number(c.monto), 0);
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <StatCard label="Cheques pendientes" value={String(pendientes.length)} />
+        <StatCard label="Monto pendiente de pago" value={fmtMoneda(totalPendiente)} tech />
+        <StatCard label="Total registrado" value={String(cheques.length)} />
+      </div>
+
+      <div className="card mb-6">
+        <h3 className="text-sm font-semibold text-navy mb-3">Nuevo cheque librado</h3>
+        <form onSubmit={crear} className="grid grid-cols-3 gap-2">
+          <select className="input" value={nuevo.banco_id} onChange={(e) => setNuevo({ ...nuevo, banco_id: e.target.value })}>
+            <option value="">Banco (opcional)…</option>
+            {bancos.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+          </select>
+          <input className="input" placeholder="Número" value={nuevo.numero} onChange={(e) => setNuevo({ ...nuevo, numero: e.target.value })} required />
+          <input className="input" placeholder="Beneficiario" value={nuevo.beneficiario} onChange={(e) => setNuevo({ ...nuevo, beneficiario: e.target.value })} required />
+          <input className="input" type="number" step="0.01" placeholder="Importe" value={nuevo.monto} onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })} required />
+          <input className="input" type="date" placeholder="Emisión" value={nuevo.fecha_emision} onChange={(e) => setNuevo({ ...nuevo, fecha_emision: e.target.value })} />
+          <input className="input" type="date" placeholder="Fecha de pago" value={nuevo.fecha_pago} onChange={(e) => setNuevo({ ...nuevo, fecha_pago: e.target.value })} required />
+          <input className="input col-span-3" placeholder="Notas" value={nuevo.notas} onChange={(e) => setNuevo({ ...nuevo, notas: e.target.value })} />
+          <button className="btn-primary col-span-3">Registrar cheque</button>
+        </form>
+      </div>
+
+      <div className="card overflow-x-auto">
+        {loading ? <p className="text-gray-400">Cargando…</p> : (
+          <table className="tbl">
+            <thead><tr><th>Número</th><th>Banco</th><th>Beneficiario</th><th>Importe</th><th>Fecha de pago</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              {cheques.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.numero}</td>
+                  <td>{c.bancos?.nombre || "—"}</td>
+                  <td>{c.beneficiario}</td>
+                  <td>{fmtMoneda(c.monto)}</td>
+                  <td>{fmtFecha(c.fecha_pago)}</td>
+                  <td><span className={`badge ${ESTADO_CHEQUE_PROPIO_LABEL[c.estado] === "Pagado" ? "bg-green-100 text-green-700" : c.estado === "pendiente" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>{ESTADO_CHEQUE_PROPIO_LABEL[c.estado]}</span></td>
+                  <td>
+                    <select className="input text-xs" value={c.estado} onChange={(e) => cambiarEstado(c.id, e.target.value as ChequePropio["estado"])}>
+                      {Object.entries(ESTADO_CHEQUE_PROPIO_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+              {cheques.length === 0 && <tr><td colSpan={7} className="text-gray-400">Sin cheques librados registrados.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // Medios de pago
 // ============================================================================
 function TabMedios() {
@@ -1105,6 +1337,8 @@ function TabMedios() {
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [loading, setLoading] = useState(true);
   const [guardandoTipo, setGuardandoTipo] = useState<string | null>(null);
+  const [tarjetaPendiente, setTarjetaPendiente] = useState(0);
+  const [tarjetaLiquidado, setTarjetaLiquidado] = useState(0);
 
   async function load() {
     const [{ data }, { data: b }] = await Promise.all([
@@ -1114,6 +1348,19 @@ function TabMedios() {
     setMedios((data as MedioPagoConfig[]) || []);
     setBancos((b as Banco[]) || []);
     setLoading(false);
+
+    // KPI 6 (Fase B): Dinero en Tarjetas de Crédito — saldo consolidado
+    // pendiente vs. ya acreditado. Nota: el sistema hoy modela "tarjeta"
+    // como un único medio de pago, sin distinguir liquidadora (Visa/Prisma/
+    // etc.) — ver limitación señalada en el documento de especificación.
+    const { data: cobrosTarjeta } = await supabase.from("cobros").select("monto, monto_neto, acreditado").eq("medio_pago", "tarjeta");
+    let pend = 0, liq = 0;
+    (cobrosTarjeta || []).forEach((c: any) => {
+      const neto = c.monto_neto ?? c.monto;
+      if (c.acreditado) liq += Number(neto); else pend += Number(neto);
+    });
+    setTarjetaPendiente(pend);
+    setTarjetaLiquidado(liq);
   }
   useEffect(() => { load(); }, []);
 
@@ -1145,6 +1392,19 @@ function TabMedios() {
 
   return (
     <div className="space-y-6">
+      <div className="card">
+        <h3 className="text-sm font-semibold text-navy mb-1">Dinero en Tarjetas de Crédito — saldo consolidado</h3>
+        <p className="text-xs text-gray-400 mb-4">
+          Suma de cobros con medio "Tarjeta", separados por si ya se acreditaron o siguen pendientes de acreditación
+          (según los días configurados abajo). Nota: hoy el sistema modela "Tarjeta" como un único medio de pago —
+          no distingue todavía entre distintas liquidadoras (Visa, Prisma, etc.).
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <StatCard label="Pendiente de acreditación" value={fmtMoneda(tarjetaPendiente)} />
+          <StatCard label="Ya acreditado" value={fmtMoneda(tarjetaLiquidado)} tech />
+        </div>
+      </div>
+
       <div className="card">
         <h3 className="text-sm font-semibold text-navy mb-1">Medios de pago habilitados</h3>
         <p className="text-xs text-gray-400 mb-4">

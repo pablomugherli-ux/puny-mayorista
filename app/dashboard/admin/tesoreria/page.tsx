@@ -20,6 +20,13 @@ const MODALIDADES_CONTRATO = [
 
 const fmt = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(n || 0);
 const fmtFecha = (s: string | null) => (s ? new Date(s).toLocaleDateString("es-AR") : "—");
+// Fase A (agosto 2026): cajas multimoneda — a diferencia de fmt() (siempre ARS,
+// usado por IVA/Sueldos/Legajos que sí son en pesos), acá cada caja puede estar
+// en una divisa distinta y hay que mostrarlo explícito.
+function fmtM(n: number, moneda: string) {
+  try { return new Intl.NumberFormat("es-AR", { style: "currency", currency: moneda || "ARS" }).format(n || 0); }
+  catch { return `${moneda} ${(n || 0).toFixed(2)}`; }
+}
 
 async function tenantId() {
   const { data: u } = await supabase.auth.getUser();
@@ -103,12 +110,32 @@ function TabLicencias() {
   const [verTodas, setVerTodas] = useState(false);
   const [resolviendo, setResolviendo] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState<Record<string, string>>({});
+  const [ausentesHoy, setAusentesHoy] = useState<any[]>([]);
+  const [loadingAusentes, setLoadingAusentes] = useState(true);
 
   const TIPO_LABEL: Record<string, string> = { vacaciones: "Vacaciones", enfermedad: "Enfermedad", estudio: "Examen / estudio", otro: "Otro" };
   const ESTADO_BADGE: Record<string, string> = {
     pendiente: "bg-amber-100 text-amber-700", aprobada: "bg-green-100 text-green-700",
     rechazada: "bg-red-100 text-red-700", cancelada: "bg-gray-100 text-gray-600",
   };
+
+  // Fase D — Control de Ausentismo Diario (KPI 12): "quién falta hoy y por
+  // qué", consolidado en un vistazo — antes había que ir empleado por
+  // empleado. Se apoya en la misma tabla solicitudes_licencia ya aprobada,
+  // filtrando el rango [fecha_desde, fecha_hasta] contra la fecha de hoy.
+  async function loadAusentesHoy() {
+    setLoadingAusentes(true);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("solicitudes_licencia")
+      .select("*, profiles(nombre, role)")
+      .eq("estado", "aprobada")
+      .lte("fecha_desde", hoy)
+      .gte("fecha_hasta", hoy);
+    setAusentesHoy(data || []);
+    setLoadingAusentes(false);
+  }
+  useEffect(() => { loadAusentesHoy(); }, []);
 
   async function load() {
     setLoading(true);
@@ -129,10 +156,31 @@ function TabLicencias() {
     }).eq("id", id);
     setResolviendo(null);
     load();
+    loadAusentesHoy();
   }
 
   return (
     <div>
+      <div className="card-tech mb-6">
+        <h3 className="text-xs uppercase tracking-wide text-white/70 mb-3">
+          Ausentismo de hoy ({new Date().toLocaleDateString("es-AR")}) — {ausentesHoy.length} persona{ausentesHoy.length === 1 ? "" : "s"}
+        </h3>
+        {loadingAusentes ? (
+          <p className="text-white/60 text-sm">Cargando…</p>
+        ) : ausentesHoy.length === 0 ? (
+          <p className="text-white/60 text-sm">Nadie tiene una licencia aprobada vigente hoy.</p>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {ausentesHoy.map((a) => (
+              <div key={a.id} className="bg-white/10 rounded-md px-3 py-2">
+                <div className="font-semibold text-electric text-sm">{a.profiles?.nombre || "Empleado"}</div>
+                <div className="text-[11px] text-white/70">{TIPO_LABEL[a.tipo] || a.tipo} · hasta {fmtFecha(a.fecha_hasta)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="card mb-6 border-l-4 border-amber-400">
         <p className="text-sm text-gray-700">
           Los empleados de campo (vendedor, entrega, cobrador) piden acá sus vacaciones y licencias desde "Mi Portal".
@@ -193,6 +241,7 @@ function TabCaja() {
   const [loading, setLoading] = useState(true);
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null);
   const [nombreNueva, setNombreNueva] = useState("");
+  const [monedaNueva, setMonedaNueva] = useState("ARS");
   const [montoApertura, setMontoApertura] = useState("0");
   const [nuevoMov, setNuevoMov] = useState({ tipo: "ingreso" as "ingreso" | "egreso", concepto: "", monto: "" });
   const hoy = new Date().toISOString().slice(0, 10);
@@ -221,9 +270,9 @@ function TabCaja() {
     const tid = await tenantId();
     const uid = await miId();
     const { error } = await supabase.from("cajas_diarias").insert({
-      tenant_id: tid, fecha: hoy, nombre: nombreNueva.trim(), monto_apertura: Number(montoApertura), abierta_por: uid,
+      tenant_id: tid, fecha: hoy, nombre: nombreNueva.trim(), moneda: monedaNueva.trim().toUpperCase() || "ARS", monto_apertura: Number(montoApertura), abierta_por: uid,
     });
-    if (!error) { setNombreNueva(""); setMontoApertura("0"); load(); }
+    if (!error) { setNombreNueva(""); setMonedaNueva("ARS"); setMontoApertura("0"); load(); }
   }
 
   async function registrarMov(e: React.FormEvent) {
@@ -266,7 +315,14 @@ function TabCaja() {
     },
     { apertura: 0, ingresos: 0, egresos: 0, abiertas: 0, cerradas: 0 }
   );
-  const saldoConsolidado = resumen.apertura + resumen.ingresos - resumen.egresos;
+  // Fase A: el saldo consolidado se agrupa por moneda — sumar ARS con USD
+  // sin convertir daría un número engañoso. Cada moneda muestra su propio total.
+  const saldoPorMoneda = cajas.reduce<Record<string, number>>((acc, c: any) => {
+    const { ingresos, egresos } = totalesDe(c);
+    const m = c.moneda || "ARS";
+    acc[m] = (acc[m] || 0) + Number(c.monto_apertura) + ingresos - egresos;
+    return acc;
+  }, {});
   const caja = cajas.find((c) => c.id === cajaSeleccionada);
   const { ingresos, egresos, cierreSugerido } = caja ? totalesDe(caja) : { ingresos: 0, egresos: 0, cierreSugerido: 0 };
 
@@ -275,12 +331,17 @@ function TabCaja() {
       {cajas.length > 0 && (
         <div className="card-tech mb-6">
           <h3 className="text-xs uppercase tracking-wide text-white/70 mb-3">Resumen general — todas las cajas de hoy ({fmtFecha(hoy)})</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div><div className="text-[10px] text-white/60 uppercase">Cajas abiertas</div><div className="text-lg font-bold text-electric">{resumen.abiertas}</div></div>
             <div><div className="text-[10px] text-white/60 uppercase">Cajas cerradas</div><div className="text-lg font-bold text-electric">{resumen.cerradas}</div></div>
-            <div><div className="text-[10px] text-white/60 uppercase">Ingresos totales</div><div className="text-lg font-bold text-electric">{fmt(resumen.ingresos)}</div></div>
-            <div><div className="text-[10px] text-white/60 uppercase">Egresos totales</div><div className="text-lg font-bold text-electric">{fmt(resumen.egresos)}</div></div>
-            <div><div className="text-[10px] text-white/60 uppercase">Saldo consolidado</div><div className="text-lg font-bold text-electric">{fmt(saldoConsolidado)}</div></div>
+            <div><div className="text-[10px] text-white/60 uppercase">Ingresos totales (ARS)</div><div className="text-lg font-bold text-electric">{fmt(resumen.ingresos)}</div></div>
+            <div><div className="text-[10px] text-white/60 uppercase">Egresos totales (ARS)</div><div className="text-lg font-bold text-electric">{fmt(resumen.egresos)}</div></div>
+          </div>
+          <div className="text-[10px] text-white/60 uppercase mb-1">Saldo consolidado por moneda</div>
+          <div className="flex flex-wrap gap-4">
+            {Object.entries(saldoPorMoneda).map(([m, v]) => (
+              <div key={m} className="text-lg font-bold text-electric">{fmtM(v, m)}</div>
+            ))}
           </div>
         </div>
       )}
@@ -289,6 +350,7 @@ function TabCaja() {
         <h3 className="text-sm font-semibold text-navy mb-3">Abrir una nueva caja</h3>
         <form onSubmit={abrirCaja} className="flex gap-2 flex-wrap">
           <input className="input flex-1 min-w-[180px]" placeholder="Nombre de la caja (ej. Mostrador, Caja Vendedor Ambulante)" value={nombreNueva} onChange={(e) => setNombreNueva(e.target.value)} required />
+          <input className="input w-24" placeholder="Moneda" value={monedaNueva} onChange={(e) => setMonedaNueva(e.target.value)} title="Ej: ARS, USD, EUR — sin límite de divisas simultáneas" />
           <input className="input w-40" type="number" step="0.01" min="0" placeholder="Monto de apertura" value={montoApertura} onChange={(e) => setMontoApertura(e.target.value)} required />
           <button className="btn-primary shrink-0">Abrir caja</button>
         </form>
@@ -305,7 +367,7 @@ function TabCaja() {
                 onClick={() => setCajaSeleccionada(c.id)}
                 className={cajaSeleccionada === c.id ? "btn-primary text-xs" : "btn-secondary text-xs"}
               >
-                {c.nombre} {c.estado === "cerrada" ? "· cerrada" : ""}
+                {c.nombre} <span className="opacity-70">({c.moneda || "ARS"})</span> {c.estado === "cerrada" ? "· cerrada" : ""}
               </button>
             ))}
           </div>
@@ -313,10 +375,10 @@ function TabCaja() {
           {caja && (
             <>
               <div className="grid grid-cols-4 gap-4 mb-6">
-                <StatCard label="Apertura" value={fmt(caja.monto_apertura)} />
-                <StatCard label="Ingresos" value={fmt(ingresos)} />
-                <StatCard label="Egresos" value={fmt(egresos)} />
-                <StatCard label={caja.estado === "cerrada" ? "Cierre registrado" : "Cierre sugerido"} value={fmt(caja.estado === "cerrada" ? caja.monto_cierre : cierreSugerido)} tech />
+                <StatCard label={`Apertura (${caja.moneda || "ARS"})`} value={fmtM(caja.monto_apertura, caja.moneda)} />
+                <StatCard label="Ingresos" value={fmtM(ingresos, caja.moneda)} />
+                <StatCard label="Egresos" value={fmtM(egresos, caja.moneda)} />
+                <StatCard label={caja.estado === "cerrada" ? "Cierre registrado" : "Cierre sugerido"} value={fmtM(caja.estado === "cerrada" ? caja.monto_cierre : cierreSugerido, caja.moneda)} tech />
               </div>
 
               {caja.estado === "abierta" && (
@@ -345,7 +407,7 @@ function TabCaja() {
                         <td>{new Date(m.fecha).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</td>
                         <td><span className={`badge ${m.tipo === "ingreso" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{m.tipo}</span></td>
                         <td>{m.concepto}</td>
-                        <td>{fmt(m.monto)}</td>
+                        <td>{fmtM(m.monto, caja.moneda)}</td>
                       </tr>
                     ))}
                     {(movsPorCaja[caja.id] || []).length === 0 && <tr><td colSpan={4} className="text-gray-400">Sin movimientos todavía.</td></tr>}
