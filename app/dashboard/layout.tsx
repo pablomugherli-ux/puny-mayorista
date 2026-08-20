@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import Ribbon from "@/components/Ribbon";
 import AlertaLicencia from "@/components/AlertaLicencia";
 import AlertasOperativas from "@/components/AlertasOperativas";
+import AvisosMaster from "@/components/AvisosMaster";
 import GateUbicacion from "@/components/GateUbicacion";
 
 const ROLES_CAMPO = ["vendedor", "entrega", "cobrador", "vigilador"];
@@ -34,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="flex flex-col" style={{ minHeight: "calc(100vh - 26px)" }}>
         <Ribbon />
+        <AvisosMaster />
         <main className="flex-1 p-6 max-w-[1400px] mx-auto w-full">
           <AlertaLicencia />
           <AlertasOperativas />

@@ -5,7 +5,7 @@ import { invocarFuncion, type RespuestaFuncion } from "@/lib/invocarFuncion";
 import { useAuth } from "@/lib/useAuth";
 import PageHeader from "@/components/PageHeader";
 import StatCard from "@/components/StatCard";
-import { ESTADO_TENANT_LABEL, ESQUEMA_COBRO_LABEL, type Tenant } from "@/lib/types";
+import { ESTADO_TENANT_LABEL, ESQUEMA_COBRO_LABEL, TIPO_AVISO_LABEL, type Tenant, type PagoLicencia, type AvisoMaster } from "@/lib/types";
 
 const ESTADO_BADGE: Record<Tenant["estado"], string> = {
   activo: "bg-green-100 text-green-700",
@@ -45,12 +45,91 @@ export default function MasterHome() {
     proximo_aumento_vigencia: "",
   });
 
+  // Fase H — historial de pagos de licencia (checklist de confirmación de
+  // cobro) dentro de la fila "Gestionar" de cada distribuidora.
+  const [pagos, setPagos] = useState<PagoLicencia[]>([]);
+  const [nuevoPago, setNuevoPago] = useState({ fecha_pago: new Date().toISOString().slice(0, 10), monto: "", moneda: "ARS", periodo_cubierto: "", notas: "" });
+  const [registrandoPago, setRegistrandoPago] = useState(false);
+
+  // Fase H — centro de avisos a distribuidoras (mensajería masiva/selectiva).
+  const [avisos, setAvisos] = useState<AvisoMaster[]>([]);
+  const [formAviso, setFormAviso] = useState({ titulo: "", mensaje: "", tipo: "info" as AvisoMaster["tipo"], destinatarios: [] as string[] });
+  const [enviandoAviso, setEnviandoAviso] = useState(false);
+  const [avisoEnvioMsg, setAvisoEnvioMsg] = useState<string | null>(null);
+
   async function load() {
     const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
     setTenants((data as Tenant[]) || []);
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+  async function cargarAvisos() {
+    const { data } = await supabase.from("avisos_master").select("*").order("fecha_envio", { ascending: false }).limit(20);
+    setAvisos((data as AvisoMaster[]) || []);
+  }
+  useEffect(() => { load(); cargarAvisos(); }, []);
+
+  async function cargarPagos(tenantId: string) {
+    const { data } = await supabase.from("pagos_licencia").select("*").eq("tenant_id", tenantId).order("fecha_pago", { ascending: false });
+    setPagos((data as PagoLicencia[]) || []);
+  }
+
+  async function registrarPago(t: Tenant) {
+    const monto = Number(nuevoPago.monto);
+    if (Number.isNaN(monto) || monto <= 0) {
+      setAvisoFila({ id: t.id, texto: "El importe del pago no es válido.", error: true });
+      return;
+    }
+    if (!nuevoPago.periodo_cubierto.trim()) {
+      setAvisoFila({ id: t.id, texto: "Indicá el período cubierto por el pago (ej: agosto 2026).", error: true });
+      return;
+    }
+    setRegistrandoPago(true);
+    const { data: u } = await supabase.auth.getUser();
+    const { error } = await supabase.from("pagos_licencia").insert({
+      tenant_id: t.id,
+      fecha_pago: nuevoPago.fecha_pago,
+      monto,
+      moneda: nuevoPago.moneda || "ARS",
+      periodo_cubierto: nuevoPago.periodo_cubierto.trim(),
+      registrado_por: u.user?.id,
+      notas: nuevoPago.notas || null,
+    });
+    setRegistrandoPago(false);
+    if (error) {
+      setAvisoFila({ id: t.id, texto: error.message, error: true });
+    } else {
+      setAvisoFila({ id: t.id, texto: "Pago registrado." });
+      setNuevoPago({ fecha_pago: new Date().toISOString().slice(0, 10), monto: "", moneda: nuevoPago.moneda, periodo_cubierto: "", notas: "" });
+      await cargarPagos(t.id);
+    }
+  }
+
+  function toggleDestinatario(tenantId: string) {
+    setFormAviso((f) => ({ ...f, destinatarios: f.destinatarios.includes(tenantId) ? f.destinatarios.filter((x) => x !== tenantId) : [...f.destinatarios, tenantId] }));
+  }
+
+  async function enviarAviso(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formAviso.titulo.trim() || !formAviso.mensaje.trim()) return;
+    setEnviandoAviso(true);
+    setAvisoEnvioMsg(null);
+    const { data: u } = await supabase.auth.getUser();
+    const { error } = await supabase.from("avisos_master").insert({
+      creado_por: u.user?.id,
+      destinatarios: formAviso.destinatarios.length > 0 ? formAviso.destinatarios : null,
+      titulo: formAviso.titulo.trim(),
+      mensaje: formAviso.mensaje.trim(),
+      tipo: formAviso.tipo,
+    });
+    setEnviandoAviso(false);
+    if (error) {
+      setAvisoEnvioMsg(error.message);
+    } else {
+      setAvisoEnvioMsg(formAviso.destinatarios.length > 0 ? `Aviso enviado a ${formAviso.destinatarios.length} distribuidora(s).` : "Aviso enviado a todas las distribuidoras.");
+      setFormAviso({ titulo: "", mensaje: "", tipo: "info", destinatarios: [] });
+      await cargarAvisos();
+    }
+  }
 
   function generarPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -78,11 +157,15 @@ export default function MasterHome() {
   }
 
   function abrirGestion(t: Tenant) {
-    setGestionando(gestionando === t.id ? null : t.id);
+    const abriendo = gestionando !== t.id;
+    setGestionando(abriendo ? t.id : null);
     setNuevaPassword("");
     setNuevoVencimiento(t.plan_vencimiento || "");
     setMotivoEstado("");
     setAvisoFila(null);
+    setPagos([]);
+    setNuevoPago({ fecha_pago: new Date().toISOString().slice(0, 10), monto: "", moneda: t.moneda || "ARS", periodo_cubierto: "", notas: "" });
+    if (abriendo) cargarPagos(t.id);
     setLicencia({
       esquema_cobro: t.esquema_cobro || "abono_mensual",
       monto_licencia: String(t.monto_licencia ?? 0),
@@ -209,6 +292,46 @@ export default function MasterHome() {
         </p>
       </div>
 
+      <div className="card mb-6">
+        <h3 className="text-sm font-semibold text-navy mb-3">Centro de avisos a distribuidoras</h3>
+        <form onSubmit={enviarAviso} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input className="input" placeholder="Título" value={formAviso.titulo} onChange={(e) => setFormAviso((f) => ({ ...f, titulo: e.target.value }))} required />
+            <select className="input" value={formAviso.tipo} onChange={(e) => setFormAviso((f) => ({ ...f, tipo: e.target.value as AvisoMaster["tipo"] }))}>
+              {Object.entries(TIPO_AVISO_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </div>
+          <textarea className="input" rows={3} placeholder="Mensaje" value={formAviso.mensaje} onChange={(e) => setFormAviso((f) => ({ ...f, mensaje: e.target.value }))} required />
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Destinatarios (dejá todo sin marcar para enviar a todas las distribuidoras)</label>
+            <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+              {tenants.map((t) => (
+                <label key={t.id} className="flex items-center gap-1 text-xs border rounded-md px-2 py-1">
+                  <input type="checkbox" checked={formAviso.destinatarios.includes(t.id)} onChange={() => toggleDestinatario(t.id)} /> {t.nombre}
+                </label>
+              ))}
+            </div>
+          </div>
+          <button className="btn-primary" disabled={enviandoAviso || !formAviso.titulo.trim() || !formAviso.mensaje.trim()}>
+            {enviandoAviso ? "Enviando…" : "Enviar aviso"}
+          </button>
+        </form>
+        {avisoEnvioMsg && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2 mt-3">{avisoEnvioMsg}</p>}
+
+        {avisos.length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs font-semibold text-navy mb-1">Últimos avisos enviados</div>
+            <ul className="space-y-1 text-xs text-gray-600 max-h-40 overflow-y-auto">
+              {avisos.map((a) => (
+                <li key={a.id} className="border-b border-gray-100 pb-1">
+                  <span className="font-medium">{a.titulo}</span> — {a.destinatarios && a.destinatarios.length > 0 ? `${a.destinatarios.length} distribuidora(s)` : "todas"} · {new Date(a.fecha_envio).toLocaleString("es-AR")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
       <div className="card overflow-x-auto">
         {loading ? <p className="text-gray-400">Cargando…</p> : (
           <table className="tbl">
@@ -315,6 +438,38 @@ export default function MasterHome() {
                               vencimiento (con fecha exacta e importe) y, si cargás un próximo aumento, un aviso 30 días
                               antes de que entre en vigencia.
                             </p>
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-semibold text-navy mb-1">Historial de pagos (checklist de confirmación de cobro)</div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2">
+                              <input className="input" type="date" value={nuevoPago.fecha_pago} onChange={(e) => setNuevoPago((p) => ({ ...p, fecha_pago: e.target.value }))} />
+                              <input className="input" type="number" min={0} step="0.01" placeholder="Importe" value={nuevoPago.monto} onChange={(e) => setNuevoPago((p) => ({ ...p, monto: e.target.value }))} />
+                              <input className="input" placeholder="Moneda" value={nuevoPago.moneda} onChange={(e) => setNuevoPago((p) => ({ ...p, moneda: e.target.value }))} />
+                              <input className="input" placeholder="Período (ej: agosto 2026)" value={nuevoPago.periodo_cubierto} onChange={(e) => setNuevoPago((p) => ({ ...p, periodo_cubierto: e.target.value }))} />
+                              <input className="input" placeholder="Notas (opcional)" value={nuevoPago.notas} onChange={(e) => setNuevoPago((p) => ({ ...p, notas: e.target.value }))} />
+                            </div>
+                            <button className="btn-primary mb-3" disabled={registrandoPago} onClick={() => registrarPago(t)}>
+                              {registrandoPago ? "Registrando…" : "Confirmar pago recibido"}
+                            </button>
+                            {pagos.length > 0 && (
+                              <div className="overflow-x-auto">
+                                <table className="tbl">
+                                  <thead><tr><th>Fecha</th><th>Importe</th><th>Período</th><th>Notas</th></tr></thead>
+                                  <tbody>
+                                    {pagos.map((p) => (
+                                      <tr key={p.id}>
+                                        <td>{fmtFecha(p.fecha_pago)}</td>
+                                        <td>{p.monto} {p.moneda}</td>
+                                        <td>{p.periodo_cubierto}</td>
+                                        <td className="text-xs text-gray-500">{p.notas || "—"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                            {pagos.length === 0 && <p className="text-xs text-gray-400">Sin pagos registrados todavía para esta distribuidora.</p>}
                           </div>
 
                           <div>

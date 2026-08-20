@@ -202,6 +202,38 @@ export const ESTADO_CHEQUE_PROPIO_LABEL: Record<ChequePropio["estado"], string> 
   anulado: "Anulado",
 };
 
+// Fase H (agosto 2026) — Usuario Maestro: historial de pagos de licencia y
+// avisos masivos/selectivos a distribuidoras. Ver
+// PUNY_Especificacion_Maestro_Dueno.docx, sección 3.3.
+export type PagoLicencia = {
+  id: string;
+  tenant_id: string;
+  fecha_pago: string;
+  monto: number;
+  moneda: string;
+  periodo_cubierto: string;
+  registrado_por: string | null;
+  notas: string | null;
+  created_at: string;
+};
+
+export type AvisoMaster = {
+  id: string;
+  creado_por: string | null;
+  destinatarios: string[] | null; // null = todos los tenants
+  titulo: string;
+  mensaje: string;
+  tipo: "info" | "advertencia" | "critico";
+  fecha_envio: string;
+  expira_en: string | null;
+};
+
+export const TIPO_AVISO_LABEL: Record<AvisoMaster["tipo"], string> = {
+  info: "Informativo",
+  advertencia: "Advertencia",
+  critico: "Crítico",
+};
+
 export type Tenant = {
   id: string;
   nombre: string;
