@@ -107,6 +107,20 @@ export default function AlertasOperativas() {
             nuevos.push({ texto: `Cliente excede límite de crédito: ${c.nombre} (deuda ${new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(c.total)} / límite ${new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(c.limite)})`, nivel: "red" });
           }
         });
+
+        // Fase E (agosto 2026): cheques propios por vencer — parte del
+        // Centro de Alertas del KPI 13 del Panel Principal.
+        const { data: chequesPorVencer } = await supabase
+          .from("cheques_propios")
+          .select("numero, beneficiario, monto, fecha_pago")
+          .eq("estado", "pendiente")
+          .lte("fecha_pago", enAnticipacion);
+        (chequesPorVencer || []).forEach((c: any) => {
+          nuevos.push({
+            texto: `Cheque propio por vencer: #${c.numero} a ${c.beneficiario} — ${new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(c.monto)} (${new Date(c.fecha_pago).toLocaleDateString("es-AR")})`,
+            nivel: "amber",
+          });
+        });
       }
 
       if (veCampo) {
